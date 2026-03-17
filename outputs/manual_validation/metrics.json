@@ -1,0 +1,10 @@
+{
+  "spacing_column": "manual_spacing_m",
+  "n_observations": 39,
+  "n_valid_predictions": 39,
+  "rmse_m": 58.291561507360896,
+  "bias_m": -21.71895670887522,
+  "r_squared": -0.1728066972036495,
+  "mean_observed_spacing_m": 70.83241671769231,
+  "mean_predicted_spacing_m": 49.1134600088171
+}

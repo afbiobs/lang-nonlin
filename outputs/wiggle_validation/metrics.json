@@ -1,0 +1,10 @@
+{
+  "spacing_column": "wiggle_spacing_m",
+  "n_observations": 34,
+  "n_valid_predictions": 34,
+  "rmse_m": 157.35208310506815,
+  "bias_m": -115.91094005228719,
+  "r_squared": -1.1849902969028743,
+  "mean_observed_spacing_m": 164.94538680617646,
+  "mean_predicted_spacing_m": 49.03444675388926
+}
