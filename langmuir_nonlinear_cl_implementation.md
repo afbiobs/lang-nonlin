@@ -1,12 +1,10 @@
 # Implementation Spec: Nonlinear Craik–Leibovich Langmuir Circulation Model for Shallow Lakes
 
-**Replaces:** `langmuir_inverse_trend_addendum.md` and the linear eigenvalue solver + buoyancy visibility filter architecture it describes.
-
 **Purpose:** The existing approach uses a linearised eigenvalue solver to predict LC cell spacing and then applies a post-hoc buoyancy visibility filter to explain the observed inverse relationship between wind speed and spacing in shallow lakes. This architecture is physically incorrect for shallow water. Hayes and Phillips (2017, *Geophys. Astrophys. Fluid Dyn.*, 111(1), 65–90) show that nonlinear steady states of the Craik–Leibovich equations predict critical wavenumbers 50–70% smaller (i.e. cells 1.4–1.9× wider) than linear theory, through a subcritical bifurcation caused by symmetry breaking. This nonlinear effect alone accounts for the observed aspect ratios (5–11) in shallow coastal waters. The buoyancy filter in the existing code is compensating for the wrong underlying physics.
 
 This spec instructs you to replace the linear solver with a nonlinear CL-equation solver using Robin boundary conditions, realistic shear/drift profiles, and a wind-to-Rayleigh-number mapping for shallow lakes. The buoyancy coupling is retained but repositioned as a secondary refinement governing bloom visibility and amplification, not cell spacing.
 
-**Key reference:** The attached PDF `GAFD2play.pdf` (Hayes and Phillips, 2017) is the primary theoretical source. All equation numbers, figure references and section references below refer to this paper. Read it carefully before coding.
+**Key reference:** The project file hayes_phillips_2017.md (Hayes and Phillips, 2017) is the primary theoretical source. All equation numbers, figure references and section references below refer to this paper. Read it carefully before coding.
 
 ---
 
