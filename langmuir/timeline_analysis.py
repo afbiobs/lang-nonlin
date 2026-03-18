@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .colony_accumulation import LangmuirModeState, advance_langmuir_state
+from .colony_accumulation import LangmuirDynamicsConfig, LangmuirModeState, advance_langmuir_state
 from .params import LCParams
 from .weather import (
     classify_wind_regime,
@@ -118,6 +118,7 @@ def predict_observation_timeline(
     observation_hour_utc: int = DEFAULT_OBSERVATION_HOUR_UTC,
     relaxation_hours: float = 12.0,
     decay_hours: float = 18.0,
+    dynamics: LangmuirDynamicsConfig | None = None,
 ) -> tuple[pd.DataFrame, dict]:
     """Predict hourly LC evolution around a single observation."""
     image_date = observation_row["image_date"]
@@ -169,6 +170,7 @@ def predict_observation_timeline(
             relaxation_hours=relaxation_hours,
             decay_hours=decay_hours,
             forcing_coherence=float(coherence.loc[timestamp]),
+            dynamics=dynamics,
         )
         state = result["mode_state"]
 
@@ -203,6 +205,7 @@ def predict_observation_timeline(
             "predicted_spacing_L_m": result["spacing_linear"],
             "selected_l": result["selected_l"],
             "target_l": result["target_l"],
+            "response_target_l": result.get("response_target_l", float("nan")),
             "unstable_l_min": result["unstable_l_min"],
             "unstable_l_max": result["unstable_l_max"],
             "unstable_band_width": (
@@ -213,7 +216,10 @@ def predict_observation_timeline(
             "peak_growth_proxy": result["peak_growth_proxy"],
             "amplitude_index": result["amplitude_index"],
             "development_index": result["development_index"],
+            "setup_index": result.get("setup_index", float("nan")),
+            "coherent_run_hours": result.get("coherent_run_hours", float("nan")),
             "regime": result["regime"],
+            "hydrodynamic_regime": result.get("hydrodynamic_regime", result["regime"]),
             "is_visible": result["is_visible"],
             "accumulation_factor": result["accumulation_factor"],
             "bloom_feedback": result["bloom_feedback"],
@@ -294,7 +300,11 @@ def summarise_observation_timeline(
         "lambda_p_mean_prev_48h": _safe_mean(pre_df["lambda_p"]),
         "La_t_mean_prev_48h": _safe_mean(pre_df["La_t"]),
         "D_max_mean_prev_48h": _safe_mean(pre_df["D_max"]),
-        "hours_supercritical_prev_48h": float((pre_df["regime"] != "subcritical").sum()),
+        "hours_supercritical_prev_48h": float((pre_df["regime"] == "supercritical").sum()),
+        "hours_near_onset_prev_48h": float((pre_df["regime"] == "near_onset").sum()),
+        "hours_hydrodynamic_supercritical_prev_48h": float((pre_df["hydrodynamic_regime"] != "subcritical").sum())
+        if "hydrodynamic_regime" in pre_df
+        else float("nan"),
         "integrated_supercriticality_prev_48h": _safe_sum(pre_df["supercriticality_ratio"]),
         "amplitude_at_obs": float(obs_row["amplitude_index"]),
         "amplitude_mean_prev_48h": _safe_mean(pre_df["amplitude_index"]),
@@ -302,7 +312,18 @@ def summarise_observation_timeline(
         "development_at_obs": float(obs_row["development_index"]),
         "development_mean_prev_48h": _safe_mean(pre_df["development_index"]),
         "development_max_prev_48h": _safe_max(pre_df["development_index"]),
+        "setup_at_obs": float(obs_row["setup_index"]) if "setup_index" in obs_row else float("nan"),
+        "setup_mean_prev_48h": _safe_mean(pre_df["setup_index"]) if "setup_index" in pre_df else float("nan"),
+        "setup_max_prev_48h": _safe_max(pre_df["setup_index"]) if "setup_index" in pre_df else float("nan"),
+        "coherent_run_hours_at_obs": float(obs_row["coherent_run_hours"]) if "coherent_run_hours" in obs_row else float("nan"),
+        "coherent_run_hours_mean_prev_48h": _safe_mean(pre_df["coherent_run_hours"])
+        if "coherent_run_hours" in pre_df
+        else float("nan"),
+        "coherent_run_hours_max_prev_48h": _safe_max(pre_df["coherent_run_hours"])
+        if "coherent_run_hours" in pre_df
+        else float("nan"),
         "selected_l_at_obs": float(obs_row["selected_l"]),
+        "response_target_l_at_obs": float(obs_row["response_target_l"]) if "response_target_l" in obs_row else float("nan"),
         "selected_l_std_prev_48h": _safe_std(pre_df["selected_l"]),
         "unstable_band_width_mean_prev_48h": _safe_mean(pre_df["unstable_band_width"]),
         "peak_growth_mean_prev_48h": _safe_mean(pre_df["peak_growth_proxy"]),
@@ -374,6 +395,7 @@ def fit_interpretable_diagnostic_model(
             "wind_max_prev_48h",
             "wind_std_prev_48h",
             "integrated_supercriticality_prev_48h",
+            "coherent_run_hours_mean_prev_48h",
         ],
         "wave_history_proxy": [
             "Hs_mean_prev_48h",
@@ -392,6 +414,8 @@ def fit_interpretable_diagnostic_model(
             "spacing_mean_prev_48h_m",
             "amplitude_at_obs",
             "development_at_obs",
+            "setup_at_obs",
+            "coherent_run_hours_at_obs",
             "unstable_band_width_mean_prev_48h",
         ],
     }

@@ -19,7 +19,7 @@ from .params import LCParams
 from .profiles import get_profile
 from .robin_bc import RobinBoundaryConditions
 from .nonlinear_solver import solve_nonlinear
-from .colony_accumulation import predict_spacing_and_visibility
+from .colony_accumulation import LangmuirDynamicsConfig, predict_spacing_and_visibility
 from .timeline_analysis import (
     fit_interpretable_diagnostic_model,
     predict_observation_timeline,
@@ -297,6 +297,7 @@ def validate_nonlinear(
     timeline_hours_before: int = 48,
     timeline_hours_after: int = 48,
     observation_hour_utc: int = 12,
+    dynamics: LangmuirDynamicsConfig | None = None,
 ) -> NonlinearValidationResult:
     """Run full nonlinear validation pipeline.
 
@@ -386,6 +387,7 @@ def validate_nonlinear(
             params,
             profile_name=profile_name,
             use_lake_profile=use_lake_profile,
+            dynamics=dynamics,
         )
 
         result_rows.append(
@@ -451,6 +453,7 @@ def validate_nonlinear(
             hours_before=timeline_hours_before,
             hours_after=timeline_hours_after,
             observation_hour_utc=observation_hour_utc,
+            dynamics=dynamics,
         )
         if len(timeline_df) > 0 and diagnostics.get("status") == "complete":
             obs_key = str(row.get("observation_id", f"obs_{idx:03d}"))
@@ -498,6 +501,37 @@ def validate_nonlinear(
     if len(valid_nl) > 0:
         ratio = valid_nl["predicted_spacing_NL_m"] / valid_nl["observed_spacing_m"]
         metrics["capture_rate_2x_NL"] = float(((ratio > 0.5) & (ratio < 2.0)).mean())
+
+    timeline_valid = observation_diagnostics.dropna(subset=["observed_spacing_m", "spacing_at_obs_m"])
+    if len(timeline_valid) > 0:
+        timeline_error = timeline_valid["spacing_at_obs_m"] - timeline_valid["observed_spacing_m"]
+        metrics["rmse_timeline_obs_m"] = float(np.sqrt(np.mean(timeline_error ** 2)))
+        metrics["bias_timeline_obs_m"] = float(timeline_error.mean())
+        metrics["r_squared_timeline_obs"] = _r_squared(
+            timeline_valid["observed_spacing_m"].to_numpy(dtype=float),
+            timeline_valid["spacing_at_obs_m"].to_numpy(dtype=float),
+        )
+        ratio_timeline = timeline_valid["spacing_at_obs_m"] / timeline_valid["observed_spacing_m"]
+        metrics["capture_rate_timeline_obs_2x"] = float(((ratio_timeline > 0.5) & (ratio_timeline < 2.0)).mean())
+        metrics["timeline_spacing_q10_m"] = float(timeline_valid["spacing_at_obs_m"].quantile(0.10))
+        metrics["timeline_spacing_q90_m"] = float(timeline_valid["spacing_at_obs_m"].quantile(0.90))
+        metrics["timeline_spacing_std_mean_m"] = float(timeline_valid["spacing_std_prev_48h_m"].mean())
+        if "integrated_supercriticality_prev_48h" in timeline_valid.columns:
+            metrics["timeline_spacing_vs_integrated_supercriticality_corr"] = float(
+                timeline_valid["spacing_at_obs_m"].corr(timeline_valid["integrated_supercriticality_prev_48h"])
+            )
+        if "coherent_run_hours_at_obs" in timeline_valid.columns:
+            metrics["timeline_spacing_vs_coherent_run_corr"] = float(
+                timeline_valid["spacing_at_obs_m"].corr(timeline_valid["coherent_run_hours_at_obs"])
+            )
+        if "coherent_run_hours_mean_prev_48h" in timeline_valid.columns:
+            metrics["timeline_spacing_vs_coherent_run_mean_corr"] = float(
+                timeline_valid["spacing_at_obs_m"].corr(timeline_valid["coherent_run_hours_mean_prev_48h"])
+            )
+        if "setup_at_obs" in timeline_valid.columns:
+            metrics["timeline_spacing_vs_setup_corr"] = float(
+                timeline_valid["spacing_at_obs_m"].corr(timeline_valid["setup_at_obs"])
+            )
 
     # R0 and kappa from the model
     if nl_result is not None:
@@ -563,6 +597,8 @@ def validate_nonlinear(
         if diagnostic_model is not None:
             with (out / "diagnostic_model.json").open("w") as f:
                 json.dump(diagnostic_model, f, indent=2, default=str)
+        with (out / "dynamics_config.json").open("w") as f:
+            json.dump((dynamics or LangmuirDynamicsConfig()).to_dict(), f, indent=2, default=str)
         with (out / "metrics.json").open("w") as f:
             json.dump(metrics, f, indent=2, default=str)
         with (out / "confounder_check.json").open("w") as f:

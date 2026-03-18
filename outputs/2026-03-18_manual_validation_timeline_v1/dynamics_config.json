@@ -1,0 +1,22 @@
+{
+  "relaxation_hours": 12.0,
+  "decay_hours": 18.0,
+  "coherent_u_star_threshold": 0.003,
+  "coherent_u_star_scale": 0.002,
+  "coherent_coherence_threshold": 0.6,
+  "coherent_decay_hours": 8.0,
+  "coherent_hours_cap": 72.0,
+  "setup_hours_scale": 10.0,
+  "setup_supercriticality_scale": 0.25,
+  "onset_mode_blend_power": 1.5,
+  "recovery_gate_floor": 0.18,
+  "expression_near_onset_setup": 0.35,
+  "expression_near_onset_hours": 4.0,
+  "merge_amplitude_threshold": 0.4,
+  "merge_setup_threshold": 0.55,
+  "merge_min_age_hours": 3.0,
+  "merge_timescale_hours": 6.0,
+  "merge_coherent_hours_threshold": 10.0,
+  "merge_u_star_threshold": 0.003,
+  "merge_step_factor": 0.85
+}

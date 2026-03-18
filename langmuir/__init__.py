@@ -11,6 +11,7 @@ from .linear_solver import LinearResult, solve_linear
 from .nonlinear_solver import NonlinearResult, solve_nonlinear
 from .rayleigh_mapping import wind_to_rayleigh, classify_regime
 from .colony_accumulation import (
+    LangmuirDynamicsConfig,
     LangmuirModeState,
     advance_langmuir_state,
     predict_spacing_and_visibility,
@@ -32,6 +33,7 @@ __all__ = [
     "solve_nonlinear",
     "wind_to_rayleigh",
     "classify_regime",
+    "LangmuirDynamicsConfig",
     "LangmuirModeState",
     "advance_langmuir_state",
     "predict_spacing_and_visibility",

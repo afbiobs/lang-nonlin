@@ -1,0 +1,13 @@
+{
+  "rmse_weight": 1.0,
+  "bias_weight": 0.25,
+  "quantile_range_weight": 0.35,
+  "variability_weight": 3.0,
+  "duration_sensitivity_weight": 35.0,
+  "setup_sensitivity_weight": 20.0,
+  "low_quantile_weight": 0.4,
+  "high_quantile_weight": 0.4,
+  "min_timeline_std_m": 12.0,
+  "min_duration_corr": 0.2,
+  "min_setup_corr": 0.2
+}

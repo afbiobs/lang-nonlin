@@ -8,7 +8,7 @@ not cell spacing.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 import numpy as np
 
@@ -25,10 +25,104 @@ class LangmuirModeState:
 
     selected_l: float | None = None
     target_l: float | None = None
+    response_target_l: float | None = None
     amplitude_index: float = 0.0
     development_index: float = 0.0
     regime: str = "subcritical"
+    hydrodynamic_regime: str = "subcritical"
     merging_age_hours: float = 0.0  # time since last merging event or formation
+    setup_index: float = 0.0
+    coherent_run_hours: float = 0.0
+
+
+@dataclass(frozen=True)
+class LangmuirDynamicsConfig:
+    """Tunable controls for finite-time Langmuir mode evolution.
+
+    The nonlinear solver still supplies the instantaneous CL target mode, but
+    the expressed mode is modulated by a duration-sensitive setup index. This
+    gives a defensible pathway to tune the model against observation-time
+    spacing while preserving the underlying CL physics.
+    """
+
+    relaxation_hours: float = 12.0
+    decay_hours: float = 18.0
+    coherent_u_star_threshold: float = 0.003
+    coherent_u_star_scale: float = 0.002
+    coherent_coherence_threshold: float = 0.6
+    coherent_decay_hours: float = 8.0
+    coherent_hours_cap: float = 72.0
+    setup_hours_scale: float = 10.0
+    setup_supercriticality_scale: float = 0.25
+    onset_mode_blend_power: float = 1.5
+    recovery_gate_floor: float = 0.18
+    expression_near_onset_setup: float = 0.35
+    expression_near_onset_hours: float = 4.0
+    merge_amplitude_threshold: float = 0.4
+    merge_setup_threshold: float = 0.55
+    merge_min_age_hours: float = 3.0
+    merge_timescale_hours: float = 6.0
+    merge_coherent_hours_threshold: float = 10.0
+    merge_u_star_threshold: float = 0.003
+    merge_step_factor: float = 0.85
+
+    def to_dict(self) -> dict[str, float]:
+        return asdict(self)
+
+
+DEFAULT_DYNAMICS = LangmuirDynamicsConfig()
+
+
+def _clip01(value: float) -> float:
+    return float(min(max(value, 0.0), 1.0))
+
+
+def coherent_run_drive(
+    params: LCParams,
+    *,
+    supercriticality: float,
+    coherence: float,
+    dynamics: LangmuirDynamicsConfig,
+) -> float:
+    """Map forcing into a coherent-run growth rate in [0, 1].
+
+    Hayes & Phillips note that visible LC typically form tens of minutes after
+    winds exceed about 3 m/s, not instantly when the CL2 criterion becomes
+    positive. This drive therefore requires both sustained wind stress and
+    directional coherence before the duration memory can build.
+    """
+    if params.u_star <= dynamics.coherent_u_star_threshold:
+        return 0.0
+    u_drive = 1.0 - math.exp(
+        -(params.u_star - dynamics.coherent_u_star_threshold) / max(dynamics.coherent_u_star_scale, 1e-6)
+    )
+    sc_drive = supercriticality / (dynamics.setup_supercriticality_scale + supercriticality)
+    if coherence <= dynamics.coherent_coherence_threshold:
+        coherence_drive = 0.0
+    else:
+        coherence_drive = (
+            (coherence - dynamics.coherent_coherence_threshold)
+            / max(1.0 - dynamics.coherent_coherence_threshold, 1e-6)
+        )
+    return _clip01(u_drive * sc_drive * coherence_drive)
+
+
+def onset_mode_wavenumber(
+    target_l: float,
+    lcL: float,
+    l_min: float,
+    l_max: float,
+) -> float:
+    """Return a physically plausible onset/immature wavenumber.
+
+    Early-time LC expression is expected to be closer to linear onset than to
+    the fully nonlinear large-cell state. We therefore anchor immature states
+    to the linear scale, clipped into the instantaneous unstable band.
+    """
+    onset_l = lcL if lcL > 0 else target_l
+    if math.isnan(l_min) or math.isnan(l_max):
+        return float(max(onset_l, target_l))
+    return float(min(max(onset_l, l_min), l_max))
 
 
 def supercritical_mode_spectrum(
@@ -113,6 +207,7 @@ def advance_langmuir_state(
     relaxation_hours: float = 12.0,
     decay_hours: float = 18.0,
     forcing_coherence: float = 1.0,
+    dynamics: LangmuirDynamicsConfig | None = None,
 ) -> dict:
     """Advance the Langmuir mode through one forcing step.
 
@@ -121,6 +216,11 @@ def advance_langmuir_state(
     toward the instantaneous supercritical target mode on a configurable
     timescale, which enables future observation-centred 48 h analyses.
     """
+    dynamics = dynamics or LangmuirDynamicsConfig(
+        relaxation_hours=relaxation_hours,
+        decay_hours=decay_hours,
+    )
+
     if use_lake_profile:
         try:
             profile = shallow_lake_profile(params)
@@ -138,11 +238,13 @@ def advance_langmuir_state(
             "spacing_linear": float("nan"),
             "selected_l": float("nan"),
             "target_l": float("nan"),
+            "response_target_l": float("nan"),
             "unstable_l_min": float("nan"),
             "unstable_l_max": float("nan"),
             "peak_growth_proxy": 0.0,
             "amplitude_index": 0.0,
             "development_index": 0.0,
+            "setup_index": 0.0,
             "mode_state": LangmuirModeState(),
             "kappa": float("nan"),
             "regime": "subcritical",
@@ -159,7 +261,7 @@ def advance_langmuir_state(
     RcNL = nl_result.RcNL
     lcNL = nl_result.lcNL
     lcL = nl_result.linear_result.lcL
-    regime = classify_regime(Ra, R0, RcNL)
+    hydrodynamic_regime = classify_regime(Ra, R0, RcNL)
 
     if previous_state is None:
         previous_state = LangmuirModeState()
@@ -167,24 +269,34 @@ def advance_langmuir_state(
 
     spacing_l = 2.0 * math.pi / lcL * params.depth if lcL > 0 else float("nan")
 
-    if regime == "subcritical" or lcNL <= 0.0:
-        dt_eff = max(float(dt_hours or decay_hours), 1e-6)
-        alpha_amp = 1.0 - math.exp(-dt_eff / max(decay_hours, 1e-6))
+    if hydrodynamic_regime == "subcritical" or lcNL <= 0.0:
+        regime = "subcritical"
+        dt_eff = max(float(dt_hours or dynamics.decay_hours), 1e-6)
+        alpha_amp = 1.0 - math.exp(-dt_eff / max(dynamics.decay_hours, 1e-6))
         amplitude_index = previous_state.amplitude_index + alpha_amp * (0.0 - previous_state.amplitude_index)
         development_index = previous_state.development_index + alpha_amp * (
             0.0 - previous_state.development_index
         )
+        setup_index = previous_state.setup_index + alpha_amp * (0.0 - previous_state.setup_index)
+        coherent_run_hours = previous_state.coherent_run_hours * math.exp(
+            -dt_eff / max(dynamics.coherent_decay_hours, 1e-6)
+        )
         mode_state = LangmuirModeState(
             selected_l=previous_state.selected_l,
             target_l=float("nan"),
+            response_target_l=float("nan"),
             amplitude_index=float(amplitude_index),
             development_index=float(development_index),
             regime=regime,
+            hydrodynamic_regime=hydrodynamic_regime,
             merging_age_hours=0.0,
+            setup_index=float(setup_index),
+            coherent_run_hours=float(coherent_run_hours),
         )
         spacing_nl = float("nan")
         selected_l = float("nan")
         target_l = float("nan")
+        response_target_l = float("nan")
         spectrum = {
             "l_min": float("nan"),
             "l_max": float("nan"),
@@ -195,58 +307,94 @@ def advance_langmuir_state(
         target_l = spectrum["target_l"]
         peak_growth_proxy = spectrum["peak_growth_proxy"]
         supercriticality = max((Ra - RcNL) / max(RcNL, 1e-12), 0.0)
-        activity_target = coherence * (supercriticality / (1.0 + supercriticality))
+        if dt_hours is None:
+            coherent_run_hours = dynamics.coherent_hours_cap
+            setup_index = 1.0
+            run_drive = 1.0
+        else:
+            run_drive = coherent_run_drive(
+                params,
+                supercriticality=supercriticality,
+                coherence=coherence,
+                dynamics=dynamics,
+            )
+            dt_eff = max(float(dt_hours), 1e-6)
+            if run_drive > 0.0:
+                coherent_run_hours = min(
+                    previous_state.coherent_run_hours + dt_eff * run_drive,
+                    dynamics.coherent_hours_cap,
+                )
+            else:
+                coherent_run_hours = previous_state.coherent_run_hours * math.exp(
+                    -dt_eff / max(dynamics.coherent_decay_hours, 1e-6)
+                )
+            setup_index = _clip01(
+                1.0 - math.exp(-coherent_run_hours / max(dynamics.setup_hours_scale, 1e-6))
+            )
+
+        onset_l = onset_mode_wavenumber(
+            target_l,
+            lcL,
+            spectrum["l_min"],
+            spectrum["l_max"],
+        )
+        response_target_l = target_l + (onset_l - target_l) * (1.0 - setup_index) ** dynamics.onset_mode_blend_power
+        activity_target = run_drive * (0.35 + 0.65 * setup_index)
 
         if dt_hours is None:
             amplitude_index = activity_target
         else:
             dt_eff = max(float(dt_hours), 1e-6)
-            amp_relax_hours = relaxation_hours / max(0.5 + 1.5 * max(activity_target, 0.0), 1e-6)
+            amp_relax_hours = dynamics.relaxation_hours / max(0.5 + 1.5 * max(activity_target, 0.0), 1e-6)
             alpha_amp = 1.0 - math.exp(-dt_eff / max(amp_relax_hours, 1e-6))
             amplitude_index = previous_state.amplitude_index + alpha_amp * (
                 activity_target - previous_state.amplitude_index
             )
 
         if dt_hours is None or previous_state.selected_l is None or math.isnan(previous_state.selected_l):
-            selected_l = target_l
+            selected_l = response_target_l
             merging_age_hours = 0.0
         else:
             dt_eff = max(float(dt_hours), 1e-6)
             merging_age_hours = previous_state.merging_age_hours + dt_eff
 
             # --- Relaxation toward target_l ---
-            # Asymmetric relaxation: cells readily grow (selected_l → target_l
-            # when target_l < selected_l) but resist shrinking back once they
-            # have merged to a larger scale.  Relaxation toward smaller spacing
-            # (higher l) only occurs when amplitude is low — i.e. the existing
-            # cell pattern has decayed enough that new cells re-form at the
-            # current preferred scale.
+            # Asymmetric relaxation: cells readily grow toward larger spacing
+            # when forcing favours it, but only recover partway back toward
+            # smaller spacing between discrete merge events. A non-zero
+            # restoring gate avoids the previous failure mode where a long
+            # spinup could merge the pattern once and then freeze it forever.
             growth_accel = 0.5 + 2.5 * max(amplitude_index, 0.0)
-            alpha = 1.0 - math.exp(-dt_eff * growth_accel / max(relaxation_hours, 1e-6))
+            alpha = 1.0 - math.exp(-dt_eff * growth_accel / max(dynamics.relaxation_hours, 1e-6))
 
-            if target_l <= previous_state.selected_l:
+            if response_target_l <= previous_state.selected_l:
                 # Target favours larger cells — relax freely toward it
-                selected_l = previous_state.selected_l + alpha * (target_l - previous_state.selected_l)
+                selected_l = previous_state.selected_l + alpha * (
+                    response_target_l - previous_state.selected_l
+                )
             else:
-                # Target favours smaller cells (higher l).  Only allow
-                # relaxation back toward target_l when amplitude is low,
-                # meaning the merged pattern has largely decayed.
+                # Target favours smaller cells (higher l). Keep hysteresis, but
+                # always allow some restoring force so merged states can relax
+                # back between discrete merge events.
                 shrink_gate = max(1.0 - amplitude_index / 0.5, 0.0)
-                selected_l = previous_state.selected_l + alpha * shrink_gate * (target_l - previous_state.selected_l)
+                shrink_gate = max(shrink_gate, dynamics.recovery_gate_floor)
+                selected_l = previous_state.selected_l + alpha * shrink_gate * (
+                    response_target_l - previous_state.selected_l
+                )
 
             # --- Cell merging (subharmonic instability) ---
             # Well-developed cells undergo merging when:
             #   1. Amplitude is high enough (cells are coherent)
             #   2. Sufficient time has passed since formation/last merge
             #   3. The subharmonic mode (l/2) is also unstable
-            merging_amplitude_threshold = 0.4
-            merging_min_age_hours = 3.0
-            merging_timescale_hours = 6.0
-
+            #   4. Wind friction velocity is strong enough to consolidate cells
             if (
-                amplitude_index > merging_amplitude_threshold
-                and merging_age_hours > merging_min_age_hours
+                amplitude_index > dynamics.merge_amplitude_threshold
+                and setup_index > dynamics.merge_setup_threshold
+                and coherent_run_hours > dynamics.merge_coherent_hours_threshold
+                and merging_age_hours > dynamics.merge_min_age_hours
                 and selected_l > 0
+                and params.u_star > dynamics.merge_u_star_threshold
             ):
                 subharmonic_l = selected_l / 2.0
                 if subharmonic_l > 0.05:
@@ -254,44 +402,53 @@ def advance_langmuir_state(
                     if Ra > R_bar_sub:
                         merge_strength = (
                             amplitude_index
-                            * supercriticality / (1.0 + supercriticality)
+                            * setup_index
                             * coherence
+                            * min(coherent_run_hours / max(dynamics.merge_coherent_hours_threshold, 1e-6), 2.0)
                         )
-                        effective_merge_time = merging_timescale_hours / max(
+                        effective_merge_time = dynamics.merge_timescale_hours / max(
                             0.2 + merge_strength, 1e-6
                         )
-                        alpha_merge = 1.0 - math.exp(
-                            -dt_eff / max(effective_merge_time, 1e-6)
-                        )
-                        selected_l = selected_l + alpha_merge * (
-                            subharmonic_l - selected_l
-                        )
-                        if alpha_merge > 0.1:
+                        if merging_age_hours >= max(dynamics.merge_min_age_hours, effective_merge_time):
+                            selected_l = max(selected_l * dynamics.merge_step_factor, subharmonic_l)
                             merging_age_hours = 0.0
 
         # Mode mismatch penalises organisation only when selected_l EXCEEDS
-        # target_l (cells too small for the forcing).  When selected_l < target_l
-        # the cells have merged to a larger, physically valid scale.
-        if selected_l > target_l:
-            mode_mismatch = (selected_l - target_l) / max(abs(target_l), 1e-6)
+        # response_target_l (cells too small for the forcing).  When
+        # selected_l < response_target_l the cells have merged to a larger,
+        # physically valid scale.
+        if selected_l > response_target_l:
+            mode_mismatch = (selected_l - response_target_l) / max(abs(response_target_l), 1e-6)
         else:
             mode_mismatch = 0.0
-        organization_target = amplitude_index * math.exp(-mode_mismatch / 0.15)
+        organization_target = amplitude_index * (0.25 + 0.75 * setup_index) * math.exp(-mode_mismatch / 0.15)
         if dt_hours is None:
             development_index = organization_target
         else:
-            alpha_dev = 1.0 - math.exp(-dt_eff / max(0.75 * relaxation_hours, 1e-6))
+            alpha_dev = 1.0 - math.exp(-dt_eff / max(0.75 * dynamics.relaxation_hours, 1e-6))
             development_index = previous_state.development_index + alpha_dev * (
                 organization_target - previous_state.development_index
             )
 
+        if (
+            setup_index < dynamics.expression_near_onset_setup
+            or coherent_run_hours < dynamics.expression_near_onset_hours
+        ):
+            regime = "near_onset"
+        else:
+            regime = "supercritical"
+
         mode_state = LangmuirModeState(
             selected_l=float(selected_l),
             target_l=float(target_l),
+            response_target_l=float(response_target_l),
             amplitude_index=float(amplitude_index),
             development_index=float(development_index),
             regime=regime,
+            hydrodynamic_regime=hydrodynamic_regime,
             merging_age_hours=float(merging_age_hours),
+            setup_index=float(setup_index),
+            coherent_run_hours=float(coherent_run_hours),
         )
         spacing_nl = 2.0 * math.pi / selected_l * params.depth if selected_l > 0 else float("nan")
 
@@ -325,14 +482,20 @@ def advance_langmuir_state(
         "spacing_linear": spacing_l,
         "selected_l": float(mode_state.selected_l) if mode_state.selected_l is not None else float("nan"),
         "target_l": float(mode_state.target_l) if mode_state.target_l is not None else float("nan"),
+        "response_target_l": (
+            float(mode_state.response_target_l) if mode_state.response_target_l is not None else float("nan")
+        ),
         "unstable_l_min": float(spectrum["l_min"]),
         "unstable_l_max": float(spectrum["l_max"]),
         "peak_growth_proxy": float(spectrum["peak_growth_proxy"]),
         "amplitude_index": float(mode_state.amplitude_index),
         "development_index": float(mode_state.development_index),
+        "setup_index": float(mode_state.setup_index),
+        "coherent_run_hours": float(mode_state.coherent_run_hours),
         "mode_state": mode_state,
         "kappa": nl_result.kappa,
         "regime": regime,
+        "hydrodynamic_regime": hydrodynamic_regime,
         "is_visible": accum["is_visible"],
         "accumulation_factor": accum["accumulation_factor"],
         "bloom_feedback": feedback,
@@ -357,6 +520,7 @@ def predict_spacing_evolution(
     relaxation_hours: float = 12.0,
     decay_hours: float = 18.0,
     forcing_coherence: list[float] | None = None,
+    dynamics: LangmuirDynamicsConfig | None = None,
 ) -> list[dict]:
     """Predict Langmuir spacing and development through a forcing time series.
 
@@ -383,6 +547,7 @@ def predict_spacing_evolution(
             relaxation_hours=relaxation_hours,
             decay_hours=decay_hours,
             forcing_coherence=forcing_coherence[idx] if forcing_coherence is not None else 1.0,
+            dynamics=dynamics,
         )
         row = dict(result)
         row.pop("mode_state", None)
@@ -470,7 +635,8 @@ def bloom_feedback_potential(
 
 def predict_spacing_and_visibility(params: LCParams,
                                     profile_name: str = "uniform",
-                                    use_lake_profile: bool = True) -> dict:
+                                    use_lake_profile: bool = True,
+                                    dynamics: LangmuirDynamicsConfig | None = None) -> dict:
     """Full prediction pipeline.
 
     1. Compute Ra from wind forcing
@@ -485,6 +651,7 @@ def predict_spacing_and_visibility(params: LCParams,
         params,
         profile_name=profile_name,
         use_lake_profile=use_lake_profile,
+        dynamics=dynamics,
     )
     result.pop("mode_state", None)
     return result
