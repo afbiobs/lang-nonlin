@@ -223,12 +223,10 @@ def _r_squared(y_true: np.ndarray, y_pred: np.ndarray) -> float:
 def validate_nonlinear(
     dataset_path: str,
     spacing_column: str = "manual_spacing_m",
-    cache_dir: str = "data/era5_cache",
     output_dir: str | None = None,
     default_depth: float = 9.0,
     default_fetch: float = 15000.0,
     profile_name: str = "uniform",
-    skip_weather: bool = True,
 ) -> NonlinearValidationResult:
     """Run full nonlinear validation pipeline.
 
@@ -265,16 +263,8 @@ def validate_nonlinear(
     obs = obs[(obs["observed_spacing_m"] > 1.0) & (obs["observed_spacing_m"] < 2000.0)]
     obs = obs.reset_index(drop=True)
 
-    # Try to load weather data if available
+    # Weather data not loaded (no weather API dependency)
     weather_data = {}
-    cache_path = Path(cache_dir)
-    if not skip_weather and cache_path.exists():
-        try:
-            from spacing_langmuir.era5 import fetch_all_observations
-            from spacing_langmuir.weather import extract_model_forcing
-            # Would load weather here
-        except ImportError:
-            pass
 
     # Predict spacing for each observation
     result_rows = []

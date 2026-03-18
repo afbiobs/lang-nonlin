@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "spacing-langmuir"
+name = "langmuir"
 version = "0.1.0"
-description = "Minimal Langmuir spacing prediction and ERA5/Open-Meteo validation workflow."
+description = "Nonlinear Craik-Leibovich Langmuir circulation model for shallow lakes."
 requires-python = ">=3.11"
 dependencies = [
   "numpy>=1.26",
@@ -14,4 +14,4 @@ dependencies = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["spacing_langmuir*"]
+include = ["langmuir*"]
