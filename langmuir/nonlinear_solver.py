@@ -221,11 +221,24 @@ def _solve_nonlinear_asymptotic(profile: ShearDriftProfile,
 
     aspect_ratio = 2.0 * np.pi / lcNL if lcNL > 0 else np.inf
 
-    # Neutral curve function: R_bar(l) = R0 + l^2 R*_2 + gamma/l^2 R_tilde_2
+    # Neutral curve using full polynomial expansion + Robin correction.
+    # The leading-order parabolic form R0 + l²R*_2 + gamma/l²×R_tilde_2 is
+    # symmetric around lcNL.  Higher-order terms from the linear expansion
+    # break this symmetry, allowing the growth-rate peak to shift with Ra.
     def neutral_curve_NL(l: float) -> float:
         if abs(l) < 1e-15:
             return np.inf
-        return R0 + l**2 * R_star_2_NL + gamma / l**2 * R_tilde_2_NL
+        # Full polynomial: sum R_bar_coeffs[k] * l^(2k) for k >= 1, plus R0
+        # R_bar_coeffs[0] = R0, R_bar_coeffs[1] = R_bar_2, etc.
+        poly_val = float(R0)
+        l2 = l * l
+        l2k = 1.0
+        for k in range(1, len(R_bar_coeffs)):
+            l2k *= l2
+            poly_val += float(R_bar_coeffs[k]) * l2k
+        # Robin correction: gamma/l^2 * R_tilde_2
+        poly_val += gamma / l2 * R_tilde_2_NL
+        return poly_val
 
     return NonlinearResult(
         R0=R0,

@@ -28,22 +28,25 @@ class LangmuirModeState:
     amplitude_index: float = 0.0
     development_index: float = 0.0
     regime: str = "subcritical"
+    merging_age_hours: float = 0.0  # time since last merging event or formation
 
 
 def supercritical_mode_spectrum(
     Ra: float,
     neutral_curve_NL,
     lcNL: float,
+    RcNL: float = 0.0,
     *,
     n_scan: int = 256,
     spectrum_power: float = 2.0,
 ) -> dict:
     """Build a finite-width supercritical spectrum and derive a target mode.
 
-    The previous implementation maximised ``Ra - R_bar(l)`` directly, which is
-    insensitive to Ra because the additive Ra term does not affect the argmax.
-    Here we instead use the full unstable band and a weighted centroid of the
-    supercriticality spectrum so the preferred mode shifts as the band widens.
+    The growth-rate weighting is asymmetric: at high supercriticality, larger
+    cells (smaller l) are favoured because the deeper circulation interacts
+    more with the full-depth shear profile.  This shifts ``target_l`` toward
+    smaller values (larger spacing) for stronger forcing, which is the
+    observed physical behaviour.
     """
     if lcNL <= 0.0:
         return {
@@ -74,7 +77,19 @@ def supercritical_mode_spectrum(
         target_l = lcNL
         peak_growth_proxy = 0.0
     else:
-        weights = growth_proxy ** spectrum_power
+        # Asymmetric weighting: at high supercriticality, favour larger cells
+        # (smaller l).  The physical basis is that the nonlinear growth rate
+        # for deeply penetrating modes scales more favourably with Ra because
+        # they interact with more of the shear profile.
+        supercriticality = (Ra - RcNL) / max(RcNL, 1e-12) if RcNL > 0 else 0.0
+        # asymmetry_strength grows from 0 (near onset) toward 1 (highly supercritical)
+        asymmetry_strength = supercriticality / (1.0 + supercriticality)
+        # Bias factor: linearly increases for smaller l relative to lcNL
+        # At l = lcNL the factor is 1; at l < lcNL (larger cells) it's > 1
+        bias = 1.0 + asymmetry_strength * (lcNL / np.maximum(l_scan, 1e-12) - 1.0)
+        bias = np.clip(bias, 0.2, 5.0)
+
+        weights = (growth_proxy ** spectrum_power) * bias
         target_l = float(np.sum(l_scan * weights) / np.sum(weights))
         peak_growth_proxy = float(np.max(growth_proxy))
 
@@ -92,7 +107,7 @@ def advance_langmuir_state(
     params: LCParams,
     *,
     profile_name: str = "uniform",
-    use_lake_profile: bool = False,
+    use_lake_profile: bool = True,
     previous_state: LangmuirModeState | None = None,
     dt_hours: float | None = None,
     relaxation_hours: float = 12.0,
@@ -165,6 +180,7 @@ def advance_langmuir_state(
             amplitude_index=float(amplitude_index),
             development_index=float(development_index),
             regime=regime,
+            merging_age_hours=0.0,
         )
         spacing_nl = float("nan")
         selected_l = float("nan")
@@ -175,7 +191,7 @@ def advance_langmuir_state(
             "peak_growth_proxy": 0.0,
         }
     else:
-        spectrum = supercritical_mode_spectrum(Ra, nl_result.neutral_curve_NL, lcNL)
+        spectrum = supercritical_mode_spectrum(Ra, nl_result.neutral_curve_NL, lcNL, RcNL)
         target_l = spectrum["target_l"]
         peak_growth_proxy = spectrum["peak_growth_proxy"]
         supercriticality = max((Ra - RcNL) / max(RcNL, 1e-12), 0.0)
@@ -193,13 +209,73 @@ def advance_langmuir_state(
 
         if dt_hours is None or previous_state.selected_l is None or math.isnan(previous_state.selected_l):
             selected_l = target_l
+            merging_age_hours = 0.0
         else:
             dt_eff = max(float(dt_hours), 1e-6)
+            merging_age_hours = previous_state.merging_age_hours + dt_eff
+
+            # --- Relaxation toward target_l ---
+            # Asymmetric relaxation: cells readily grow (selected_l → target_l
+            # when target_l < selected_l) but resist shrinking back once they
+            # have merged to a larger scale.  Relaxation toward smaller spacing
+            # (higher l) only occurs when amplitude is low — i.e. the existing
+            # cell pattern has decayed enough that new cells re-form at the
+            # current preferred scale.
             growth_accel = 0.5 + 2.5 * max(amplitude_index, 0.0)
             alpha = 1.0 - math.exp(-dt_eff * growth_accel / max(relaxation_hours, 1e-6))
-            selected_l = previous_state.selected_l + alpha * (target_l - previous_state.selected_l)
 
-        mode_mismatch = abs(selected_l - target_l) / max(abs(target_l), 1e-6)
+            if target_l <= previous_state.selected_l:
+                # Target favours larger cells — relax freely toward it
+                selected_l = previous_state.selected_l + alpha * (target_l - previous_state.selected_l)
+            else:
+                # Target favours smaller cells (higher l).  Only allow
+                # relaxation back toward target_l when amplitude is low,
+                # meaning the merged pattern has largely decayed.
+                shrink_gate = max(1.0 - amplitude_index / 0.5, 0.0)
+                selected_l = previous_state.selected_l + alpha * shrink_gate * (target_l - previous_state.selected_l)
+
+            # --- Cell merging (subharmonic instability) ---
+            # Well-developed cells undergo merging when:
+            #   1. Amplitude is high enough (cells are coherent)
+            #   2. Sufficient time has passed since formation/last merge
+            #   3. The subharmonic mode (l/2) is also unstable
+            merging_amplitude_threshold = 0.4
+            merging_min_age_hours = 3.0
+            merging_timescale_hours = 6.0
+
+            if (
+                amplitude_index > merging_amplitude_threshold
+                and merging_age_hours > merging_min_age_hours
+                and selected_l > 0
+            ):
+                subharmonic_l = selected_l / 2.0
+                if subharmonic_l > 0.05:
+                    R_bar_sub = nl_result.neutral_curve_NL(subharmonic_l)
+                    if Ra > R_bar_sub:
+                        merge_strength = (
+                            amplitude_index
+                            * supercriticality / (1.0 + supercriticality)
+                            * coherence
+                        )
+                        effective_merge_time = merging_timescale_hours / max(
+                            0.2 + merge_strength, 1e-6
+                        )
+                        alpha_merge = 1.0 - math.exp(
+                            -dt_eff / max(effective_merge_time, 1e-6)
+                        )
+                        selected_l = selected_l + alpha_merge * (
+                            subharmonic_l - selected_l
+                        )
+                        if alpha_merge > 0.1:
+                            merging_age_hours = 0.0
+
+        # Mode mismatch penalises organisation only when selected_l EXCEEDS
+        # target_l (cells too small for the forcing).  When selected_l < target_l
+        # the cells have merged to a larger, physically valid scale.
+        if selected_l > target_l:
+            mode_mismatch = (selected_l - target_l) / max(abs(target_l), 1e-6)
+        else:
+            mode_mismatch = 0.0
         organization_target = amplitude_index * math.exp(-mode_mismatch / 0.15)
         if dt_hours is None:
             development_index = organization_target
@@ -215,6 +291,7 @@ def advance_langmuir_state(
             amplitude_index=float(amplitude_index),
             development_index=float(development_index),
             regime=regime,
+            merging_age_hours=float(merging_age_hours),
         )
         spacing_nl = 2.0 * math.pi / selected_l * params.depth if selected_l > 0 else float("nan")
 
@@ -274,7 +351,7 @@ def predict_spacing_evolution(
     *,
     times: list | None = None,
     profile_name: str = "uniform",
-    use_lake_profile: bool = False,
+    use_lake_profile: bool = True,
     initial_state: LangmuirModeState | None = None,
     default_dt_hours: float = 1.0,
     relaxation_hours: float = 12.0,
@@ -393,7 +470,7 @@ def bloom_feedback_potential(
 
 def predict_spacing_and_visibility(params: LCParams,
                                     profile_name: str = "uniform",
-                                    use_lake_profile: bool = False) -> dict:
+                                    use_lake_profile: bool = True) -> dict:
     """Full prediction pipeline.
 
     1. Compute Ra from wind forcing
