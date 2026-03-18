@@ -31,7 +31,10 @@ langmuir/
 ├── nonlinear_solver.py  # Nonlinear asymptotic + Galerkin solver (CORE)
 ├── galerkin.py          # Legendre spectral infrastructure
 ├── rayleigh_mapping.py  # Wind speed → Rayleigh number
-├── colony_accumulation.py  # Biological visibility diagnostic (secondary)
+├── colony_accumulation.py  # Spacing, visibility, and finite-time mode evolution
+├── era5.py              # ERA5/Open-Meteo download + cache helpers
+├── weather.py           # Weather-window summaries and persistence diagnostics
+├── timeline_analysis.py # Observation-centred hourly timelines + diagnostics
 ├── validation.py        # Validation pipeline
 └── utils.py             # Polynomial helpers
 ```
@@ -77,10 +80,16 @@ from langmuir.validation import validate_nonlinear
 result = validate_nonlinear(
     dataset_path="data/observations_minimal.csv",
     spacing_column="manual_spacing_m",
+    cache_dir="data/era5_cache",
     output_dir="outputs/manual_validation",
     default_depth=9.0,       # fallback depth (m) when depth_m column is absent
     default_fetch=15000.0,   # fallback fetch (m)
     profile_name="uniform",  # shear/drift profile: "uniform" | "linear_drift" | …
+    skip_download=False,     # use cached ERA5 if present, otherwise download from Open-Meteo
+    use_lake_profile=True,   # dynamic shallow-lake profile built from forcing
+    timeline_hours_before=48,
+    timeline_hours_after=48,
+    observation_hour_utc=12, # date-only observations are centred on noon UTC
 )
 
 print(result.metrics)
@@ -94,7 +103,9 @@ from langmuir.validation import validate_nonlinear
 r = validate_nonlinear(
     "data/observations_minimal.csv",
     spacing_column="manual_spacing_m",
+    cache_dir="data/era5_cache",
     output_dir="outputs/manual_validation",
+    use_lake_profile=True,
 )
 import json, sys
 print(json.dumps(r.metrics, indent=2, default=str))
@@ -108,8 +119,57 @@ After running, `outputs/manual_validation/` contains:
 | File | Contents |
 |---|---|
 | `results.csv` | Per-observation predictions vs. observations |
+| `weather_summary.csv` | ERA5/Open-Meteo forcing summaries for each successful observation |
+| `observation_diagnostics.csv` | One-row-per-observation summary of 96 h timeline diagnostics |
+| `diagnostic_model.json` | Simple interpretable ridge-model comparison of diagnostic feature families |
+| `timelines/*.csv` | Per-observation hourly timelines from 48 h before to 48 h after image time |
 | `metrics.json` | Aggregate statistics (RMSE, R², bias, capture rate) |
 | `confounder_check.json` | Wind–spacing partial correlations |
+
+### Observation-centred timeline workflow
+
+The validation pipeline now uses two linked forcing products for each
+observation:
+
+1. A 10-day spinup window used to compute a representative wind forcing.
+2. A 96-hour hourly timeline centred on the observation date for finite-time
+   state evolution and diagnostics.
+
+Because the source dataset stores dates rather than timestamps, timelines are
+centred on `12:00 UTC` by default. Each hourly step evolves:
+
+- `selected_l`: the current Langmuir mode actually expressed by the system
+- `target_l`: the instantaneous preferred mode from the current unstable band
+- `amplitude_index`: a simple activity/growth proxy
+- `development_index`: a simple organization/spin-up proxy
+
+This makes it possible to inspect whether observed spacing is more consistent
+with recent wind history, wave-history proxies, directional persistence, or
+limitations in the current reduced-order model structure.
+
+### Timeline diagnostics and simple interpretable model
+
+For each observation, `timeline_analysis.py` computes summary diagnostics such
+as:
+
+- 48 h mean/max/std wind speed
+- directional steadiness and cumulative turning angle
+- mean `H_s`, `lambda_p`, `La_t`, and `D_max`
+- hours supercritical and integrated supercriticality
+- spacing, amplitude, and development at image time
+
+These diagnostics are compared against observed spacing using simple
+family-grouped ridge regressions:
+
+- `wind_history`
+- `wave_history_proxy`
+- `direction_persistence`
+- `model_structure`
+- `combined`
+
+The goal is diagnostic, not production prediction: to reveal which forcing
+histories carry real explanatory signal and where the present CL-based reduced
+model is still too insensitive.
 
 ### Key metrics
 
@@ -121,6 +181,8 @@ After running, `outputs/manual_validation/` contains:
 | `capture_rate_2x_NL` | Fraction of observations within factor 2× of prediction |
 | `kappa` | Nonlinear wavenumber ratio (profile-dependent constant) |
 | `rmse_L_m` | RMSE for linear baseline — compare to `rmse_NL_m` |
+| `diagnostic_best_family` | Best-performing diagnostic feature family by LOOCV R² |
+| `diagnostic_best_family_loocv_r2` | Cross-validated R² for that family |
 
 ### Checking the `results.csv` output
 
@@ -155,6 +217,10 @@ Derived quantities computed automatically: `u_star`, `Ra`, `D_max`, `nu_T`,
 | `linear_drift` | Linear Stokes drift profile |
 | `linear_shear` | Linear wind-driven shear |
 | `both_linear` | Both linear |
+
+When `use_lake_profile=True`, validation and timeline workflows instead use a
+dynamic shallow-lake profile derived from the local forcing (`LCParams`) at
+each step.
 
 ## Dataset columns (`observations_minimal.csv`)
 

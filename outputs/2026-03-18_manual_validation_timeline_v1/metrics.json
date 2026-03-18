@@ -1,0 +1,22 @@
+{
+  "spacing_column": "manual_spacing_m",
+  "profile": "shallow_lake_dynamic",
+  "n_observations": 39,
+  "n_valid_NL": 39,
+  "n_valid_L": 39,
+  "rmse_NL_m": 54.105433195051766,
+  "bias_NL_m": 5.335616874093312,
+  "r_squared_NL": -0.010408092360769894,
+  "rmse_L_m": 58.48146529655712,
+  "bias_L_m": -22.858946135722142,
+  "r_squared_L": -0.18046074599853767,
+  "capture_rate_2x_NL": 0.8974358974358975,
+  "kappa_mean": 2.1057185199861186,
+  "kappa_min": 2.100617485663704,
+  "kappa_max": 2.107321277332965,
+  "Ra_mean": 37976.56399605547,
+  "Ra_min": 31835.29199144628,
+  "Ra_max": 39650.65767342675,
+  "diagnostic_best_family": "wave_history_proxy",
+  "diagnostic_best_family_loocv_r2": 0.018007145849455175
+}

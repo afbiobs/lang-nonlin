@@ -1,0 +1,20 @@
+{
+  "spacing_column": "wiggle_spacing_m",
+  "profile": "shallow_lake_dynamic",
+  "n_observations": 34,
+  "n_valid_NL": 34,
+  "n_valid_L": 34,
+  "rmse_NL_m": 138.62980847865967,
+  "bias_NL_m": -88.79662901315938,
+  "r_squared_NL": -0.6959684381447004,
+  "rmse_L_m": 158.1606764702832,
+  "bias_L_m": -116.97311570641092,
+  "r_squared_L": -1.2075042428939824,
+  "capture_rate_2x_NL": 0.6176470588235294,
+  "kappa_mean": 2.1059735981463312,
+  "kappa_min": 2.1002170389019503,
+  "kappa_max": 2.107452508338573,
+  "Ra_mean": 38290.77461763802,
+  "Ra_min": 31409.97058993581,
+  "Ra_max": 39754.962917948214
+}

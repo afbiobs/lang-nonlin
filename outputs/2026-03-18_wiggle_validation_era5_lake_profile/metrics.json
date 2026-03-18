@@ -1,0 +1,13 @@
+{
+  "spacing_column": "wiggle_spacing_m",
+  "profile": "uniform",
+  "n_observations": 34,
+  "n_valid_NL": 0,
+  "n_valid_L": 0,
+  "R0": 120.0,
+  "kappa": 1.4251844185380738,
+  "lcNL": 0.8044485652134712,
+  "lcL": 1.1464875606575486,
+  "RcNL": 246.09376020896653,
+  "RcL": 182.07996518943997
+}

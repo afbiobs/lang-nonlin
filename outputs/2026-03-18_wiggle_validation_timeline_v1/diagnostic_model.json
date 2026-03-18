@@ -1,0 +1,171 @@
+{
+  "wind_history": {
+    "status": "complete",
+    "n_samples": 34,
+    "features": [
+      "wind_mean_prev_48h",
+      "wind_max_prev_48h",
+      "wind_std_prev_48h",
+      "integrated_supercriticality_prev_48h"
+    ],
+    "r2_in_sample": 0.1764767091381907,
+    "r2_loocv": -0.15936596717939877,
+    "rmse_in_sample_m": 96.60190337677874,
+    "coefficients_standardized": {
+      "wind_mean_prev_48h": -16.09203785336838,
+      "wind_max_prev_48h": 16.82156249864923,
+      "wind_std_prev_48h": 36.545103403824854,
+      "integrated_supercriticality_prev_48h": 36.61772345502497
+    },
+    "feature_correlations": {
+      "wind_mean_prev_48h": -0.17094820098802835,
+      "wind_max_prev_48h": 0.0807930339485622,
+      "wind_std_prev_48h": 0.1971646083376887,
+      "integrated_supercriticality_prev_48h": 0.17973421590422195
+    }
+  },
+  "wave_history_proxy": {
+    "status": "complete",
+    "n_samples": 34,
+    "features": [
+      "Hs_mean_prev_48h",
+      "lambda_p_mean_prev_48h",
+      "La_t_mean_prev_48h",
+      "D_max_mean_prev_48h"
+    ],
+    "r2_in_sample": 0.0402874096212531,
+    "r2_loocv": -0.1869467812616088,
+    "rmse_in_sample_m": 104.28415741005034,
+    "coefficients_standardized": {
+      "Hs_mean_prev_48h": 10.904905989258685,
+      "lambda_p_mean_prev_48h": -39.25816196653723,
+      "La_t_mean_prev_48h": 1.834377290730844,
+      "D_max_mean_prev_48h": 8.031580871265943
+    },
+    "feature_correlations": {
+      "Hs_mean_prev_48h": -0.17094820098802832,
+      "lambda_p_mean_prev_48h": -0.18671263502147872,
+      "La_t_mean_prev_48h": -0.14946289095841084,
+      "D_max_mean_prev_48h": -0.17188023268949582
+    }
+  },
+  "direction_persistence": {
+    "status": "complete",
+    "n_samples": 34,
+    "features": [
+      "wind_steadiness_prev_48h",
+      "turning_mean_prev_48h_deg",
+      "turning_total_prev_48h_deg",
+      "coherence_mean_prev_48h"
+    ],
+    "r2_in_sample": 0.13299394239511675,
+    "r2_loocv": -0.14782394318076775,
+    "rmse_in_sample_m": 99.11943236210287,
+    "coefficients_standardized": {
+      "wind_steadiness_prev_48h": -29.256377640938126,
+      "turning_mean_prev_48h_deg": -13.057236220288615,
+      "turning_total_prev_48h_deg": -13.057236220289322,
+      "coherence_mean_prev_48h": -35.619377283536814
+    },
+    "feature_correlations": {
+      "wind_steadiness_prev_48h": -0.34230869924540636,
+      "turning_mean_prev_48h_deg": 0.2845688687530808,
+      "turning_total_prev_48h_deg": 0.28456886875308074,
+      "coherence_mean_prev_48h": -0.3058076057923058
+    }
+  },
+  "model_structure": {
+    "status": "complete",
+    "n_samples": 34,
+    "features": [
+      "spacing_at_obs_m",
+      "spacing_mean_prev_48h_m",
+      "amplitude_at_obs",
+      "development_at_obs",
+      "unstable_band_width_mean_prev_48h"
+    ],
+    "r2_in_sample": 0.0666985732863844,
+    "r2_loocv": -0.4394805159588129,
+    "rmse_in_sample_m": 102.8392037077338,
+    "coefficients_standardized": {
+      "spacing_at_obs_m": -12.550968208604072,
+      "spacing_mean_prev_48h_m": 0.3639466371897618,
+      "amplitude_at_obs": 20.821135392957157,
+      "development_at_obs": -32.555345370221474,
+      "unstable_band_width_mean_prev_48h": -13.44128770499179
+    },
+    "feature_correlations": {
+      "spacing_at_obs_m": -0.15129505005928265,
+      "spacing_mean_prev_48h_m": -0.10168055261901211,
+      "amplitude_at_obs": -0.09861272608582342,
+      "development_at_obs": -0.15710892032852106,
+      "unstable_band_width_mean_prev_48h": -0.12428931618801185
+    }
+  },
+  "combined": {
+    "status": "complete",
+    "n_samples": 34,
+    "features": [
+      "D_max_mean_prev_48h",
+      "Hs_mean_prev_48h",
+      "La_t_mean_prev_48h",
+      "amplitude_at_obs",
+      "coherence_mean_prev_48h",
+      "development_at_obs",
+      "integrated_supercriticality_prev_48h",
+      "lambda_p_mean_prev_48h",
+      "spacing_at_obs_m",
+      "spacing_mean_prev_48h_m",
+      "turning_mean_prev_48h_deg",
+      "turning_total_prev_48h_deg",
+      "unstable_band_width_mean_prev_48h",
+      "wind_max_prev_48h",
+      "wind_mean_prev_48h",
+      "wind_std_prev_48h",
+      "wind_steadiness_prev_48h"
+    ],
+    "r2_in_sample": 0.5004454285170237,
+    "r2_loocv": -0.1584378598854379,
+    "rmse_in_sample_m": 75.23834070996047,
+    "coefficients_standardized": {
+      "D_max_mean_prev_48h": -0.09055056640125025,
+      "Hs_mean_prev_48h": 1.4810110176419673,
+      "La_t_mean_prev_48h": -10.372312378182757,
+      "amplitude_at_obs": 8.23233823704994,
+      "coherence_mean_prev_48h": -63.611031308447544,
+      "development_at_obs": 43.57882210820303,
+      "integrated_supercriticality_prev_48h": 94.61820131871517,
+      "lambda_p_mean_prev_48h": -26.20093107528051,
+      "spacing_at_obs_m": -34.58286718234275,
+      "spacing_mean_prev_48h_m": -39.943738372207136,
+      "turning_mean_prev_48h_deg": -23.60572453006988,
+      "turning_total_prev_48h_deg": -23.605724530069555,
+      "unstable_band_width_mean_prev_48h": 103.16664762393971,
+      "wind_max_prev_48h": 62.813970176748036,
+      "wind_mean_prev_48h": 1.4810110176417524,
+      "wind_std_prev_48h": 27.447870838701455,
+      "wind_steadiness_prev_48h": -43.25611548379946
+    },
+    "feature_correlations": {
+      "D_max_mean_prev_48h": -0.17188023268949582,
+      "Hs_mean_prev_48h": -0.17094820098802832,
+      "La_t_mean_prev_48h": -0.14946289095841084,
+      "amplitude_at_obs": -0.09861272608582342,
+      "coherence_mean_prev_48h": -0.3058076057923058,
+      "development_at_obs": -0.15710892032852106,
+      "integrated_supercriticality_prev_48h": 0.17973421590422195,
+      "lambda_p_mean_prev_48h": -0.18671263502147872,
+      "spacing_at_obs_m": -0.15129505005928265,
+      "spacing_mean_prev_48h_m": -0.10168055261901211,
+      "turning_mean_prev_48h_deg": 0.2845688687530808,
+      "turning_total_prev_48h_deg": 0.28456886875308074,
+      "unstable_band_width_mean_prev_48h": -0.12428931618801185,
+      "wind_max_prev_48h": 0.0807930339485622,
+      "wind_mean_prev_48h": -0.17094820098802835,
+      "wind_std_prev_48h": 0.1971646083376887,
+      "wind_steadiness_prev_48h": -0.34230869924540636
+    }
+  },
+  "best_family_by_loocv_r2": "direction_persistence",
+  "best_family_loocv_r2": -0.14782394318076775
+}

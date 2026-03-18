@@ -14,12 +14,18 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from .era5 import fetch_all_observations
 from .params import LCParams
-from .profiles import get_profile, ShearDriftProfile
+from .profiles import get_profile
 from .robin_bc import RobinBoundaryConditions
 from .nonlinear_solver import solve_nonlinear
 from .colony_accumulation import predict_spacing_and_visibility
-from .rayleigh_mapping import wind_to_rayleigh
+from .timeline_analysis import (
+    fit_interpretable_diagnostic_model,
+    predict_observation_timeline,
+    write_observation_timelines,
+)
+from .weather import classify_wind_regime, extract_model_forcing, summarise_context_window
 
 
 # ======================================================================
@@ -36,6 +42,8 @@ def check_wind_spacing_confounders(results_df: pd.DataFrame) -> dict:
     valid = results_df.dropna(subset=["U10", "observed_spacing_m"])
     if len(valid) < 5:
         return {"status": "skipped", "reason": "insufficient data"}
+    if np.std(valid["U10"]) <= 1e-10 or np.std(valid["observed_spacing_m"]) <= 1e-10:
+        return {"status": "skipped", "reason": "zero variance"}
 
     # Simple correlation
     r_wind_spacing = float(np.corrcoef(valid["U10"], valid["observed_spacing_m"])[0, 1])
@@ -116,7 +124,8 @@ def check_observation_quality_bias(results_df: pd.DataFrame) -> dict:
 def nonlinear_consistency_envelope(results_df: pd.DataFrame | None = None,
                                     depths: list[float] | None = None,
                                     fetch: float = 15000.0,
-                                    profile_name: str = "uniform") -> dict:
+                                    profile_name: str = "uniform",
+                                    use_lake_profile: bool = False) -> dict:
     """Compute nonlinear predicted spacing across wind speed range.
 
     For each depth, compute spacing_nonlinear and spacing_linear,
@@ -137,7 +146,11 @@ def nonlinear_consistency_envelope(results_df: pd.DataFrame | None = None,
 
         for U10 in wind_range:
             params = LCParams(U10=float(U10), depth=depth, fetch=fetch)
-            result = predict_spacing_and_visibility(params, profile_name=profile_name)
+            result = predict_spacing_and_visibility(
+                params,
+                profile_name=profile_name,
+                use_lake_profile=use_lake_profile,
+            )
 
             spacings_NL.append(result["spacing_nonlinear"])
             spacings_L.append(result["spacing_linear"])
@@ -161,7 +174,11 @@ def nonlinear_consistency_envelope(results_df: pd.DataFrame | None = None,
 # Kappa diagnostic (NEW)
 # ======================================================================
 
-def kappa_diagnostic(results_df: pd.DataFrame, profile_name: str = "uniform") -> dict:
+def kappa_diagnostic(
+    results_df: pd.DataFrame,
+    profile_name: str = "uniform",
+    use_lake_profile: bool = False,
+) -> dict:
     """For each observation, compute kappa = lcL / lcNL.
 
     kappa should be approximately constant (depends on profiles, not wind).
@@ -170,12 +187,13 @@ def kappa_diagnostic(results_df: pd.DataFrame, profile_name: str = "uniform") ->
     obs_wind = []
     obs_ratio = []
 
-    profile = get_profile(profile_name)
-    bcs = RobinBoundaryConditions()
-
-    # Solve once for kappa (profile-dependent, not wind-dependent)
-    nl_result = solve_nonlinear(profile, bcs)
-    kappa_theory = nl_result.kappa
+    if use_lake_profile:
+        kappa_theory = float(results_df["kappa"].dropna().mean()) if "kappa" in results_df else float("nan")
+    else:
+        profile = get_profile(profile_name)
+        bcs = RobinBoundaryConditions()
+        nl_result = solve_nonlinear(profile, bcs)
+        kappa_theory = nl_result.kappa
 
     for _, row in results_df.iterrows():
         if pd.isna(row.get("observed_spacing_m")) or pd.isna(row.get("predicted_spacing_NL_m")):
@@ -184,10 +202,11 @@ def kappa_diagnostic(results_df: pd.DataFrame, profile_name: str = "uniform") ->
         ratio = row["observed_spacing_m"] / row["predicted_spacing_NL_m"]
         obs_ratio.append(ratio)
         obs_wind.append(row.get("U10", float("nan")))
-        kappas.append(kappa_theory)
+        kappas.append(row.get("kappa", kappa_theory))
 
     return {
         "kappa_theory": kappa_theory,
+        "kappa_values": kappas,
         "obs_to_pred_ratio": obs_ratio,
         "wind_speeds": obs_wind,
         "mean_ratio": float(np.nanmean(obs_ratio)) if obs_ratio else float("nan"),
@@ -202,11 +221,14 @@ def kappa_diagnostic(results_df: pd.DataFrame, profile_name: str = "uniform") ->
 @dataclass
 class NonlinearValidationResult:
     results: pd.DataFrame
+    weather_summary: pd.DataFrame
+    observation_diagnostics: pd.DataFrame | None
     metrics: dict
     envelopes: dict
     confounder_check: dict
     quality_check: dict
     kappa_check: dict | None
+    diagnostic_model: dict | None = None
     output_dir: Path | None = None
 
 
@@ -220,13 +242,61 @@ def _r_squared(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     return 1.0 - ss_res / ss_tot
 
 
+def load_observations(
+    dataset_path: str,
+    spacing_column: str = "manual_spacing_m",
+    default_depth: float = 9.0,
+    default_fetch: float = 15000.0,
+) -> pd.DataFrame:
+    df = pd.read_csv(dataset_path)
+    required = {"image_date", "authoritative_lat", "authoritative_lng", spacing_column}
+    missing = sorted(required - set(df.columns))
+    if missing:
+        raise ValueError(f"Missing columns: {missing}")
+
+    observations = pd.DataFrame(
+        {
+            "image_date": pd.to_datetime(df["image_date"], errors="coerce").dt.date,
+            "authoritative_lat": pd.to_numeric(df["authoritative_lat"], errors="coerce"),
+            "authoritative_lng": pd.to_numeric(df["authoritative_lng"], errors="coerce"),
+            "observed_spacing_m": pd.to_numeric(df[spacing_column], errors="coerce"),
+        }
+    )
+    if "observation_id" in df.columns:
+        observations["observation_id"] = df["observation_id"]
+    if "source_row" in df.columns:
+        observations["source_row"] = df["source_row"]
+    if "depth_m" in df.columns:
+        observations["depth_m"] = pd.to_numeric(df["depth_m"], errors="coerce").fillna(default_depth)
+    else:
+        observations["depth_m"] = default_depth
+    if "fetch_m" in df.columns:
+        observations["fetch_m"] = pd.to_numeric(df["fetch_m"], errors="coerce").fillna(default_fetch)
+    else:
+        observations["fetch_m"] = default_fetch
+
+    observations = observations.dropna(
+        subset=["image_date", "authoritative_lat", "authoritative_lng", "observed_spacing_m"]
+    )
+    observations = observations[
+        (observations["observed_spacing_m"] > 1.0) & (observations["observed_spacing_m"] < 2000.0)
+    ]
+    return observations.sort_values("image_date").reset_index(drop=True)
+
+
 def validate_nonlinear(
     dataset_path: str,
     spacing_column: str = "manual_spacing_m",
+    cache_dir: str = "data/era5_cache",
     output_dir: str | None = None,
     default_depth: float = 9.0,
     default_fetch: float = 15000.0,
     profile_name: str = "uniform",
+    skip_download: bool = False,
+    use_lake_profile: bool = False,
+    timeline_hours_before: int = 48,
+    timeline_hours_after: int = 48,
+    observation_hour_utc: int = 12,
 ) -> NonlinearValidationResult:
     """Run full nonlinear validation pipeline.
 
@@ -237,77 +307,164 @@ def validate_nonlinear(
     5. Generate consistency envelope
     6. Run kappa diagnostic
     """
-    # Load observations
-    df = pd.read_csv(dataset_path)
-    required = {"image_date", "authoritative_lat", "authoritative_lng", spacing_column}
-    missing = sorted(required - set(df.columns))
-    if missing:
-        raise ValueError(f"Missing columns: {missing}")
-
-    obs = pd.DataFrame({
-        "image_date": pd.to_datetime(df["image_date"], errors="coerce").dt.date,
-        "lat": pd.to_numeric(df["authoritative_lat"], errors="coerce"),
-        "lon": pd.to_numeric(df["authoritative_lng"], errors="coerce"),
-        "observed_spacing_m": pd.to_numeric(df[spacing_column], errors="coerce"),
-    })
-    if "depth_m" in df.columns:
-        obs["depth_m"] = pd.to_numeric(df["depth_m"], errors="coerce").fillna(default_depth)
-    else:
-        obs["depth_m"] = default_depth
-    if "fetch_m" in df.columns:
-        obs["fetch_m"] = pd.to_numeric(df["fetch_m"], errors="coerce").fillna(default_fetch)
-    else:
-        obs["fetch_m"] = default_fetch
-
-    obs = obs.dropna(subset=["image_date", "lat", "lon", "observed_spacing_m"])
-    obs = obs[(obs["observed_spacing_m"] > 1.0) & (obs["observed_spacing_m"] < 2000.0)]
-    obs = obs.reset_index(drop=True)
-
-    # Weather data not loaded (no weather API dependency)
-    weather_data = {}
+    observations = load_observations(
+        dataset_path=dataset_path,
+        spacing_column=spacing_column,
+        default_depth=default_depth,
+        default_fetch=default_fetch,
+    )
+    weather_data = fetch_all_observations(observations, Path(cache_dir), skip_download=skip_download)
 
     # Predict spacing for each observation
     result_rows = []
-    # Use representative wind speeds if no weather data
-    # For validation without weather, use a range of typical wind speeds
-    profile = get_profile(profile_name)
-    bcs = RobinBoundaryConditions()
-    nl_result = solve_nonlinear(profile, bcs)
+    weather_rows = []
+    diagnostics_rows = []
+    timeline_frames: dict[str, pd.DataFrame] = {}
+    nl_result = None
+    if not use_lake_profile:
+        profile = get_profile(profile_name)
+        bcs = RobinBoundaryConditions()
+        nl_result = solve_nonlinear(profile, bcs)
 
-    for idx, row in obs.iterrows():
+    for idx, row in observations.iterrows():
         depth = float(row["depth_m"])
         fetch = float(row["fetch_m"])
+        lat = float(row["authoritative_lat"])
+        lon = float(row["authoritative_lng"])
+        image_date = row["image_date"].isoformat()
+        obs_weather = weather_data.get(idx, {})
 
-        # If we have cached weather, use it; otherwise use heuristic U10
-        U10 = weather_data.get(idx, {}).get("U10_representative", 5.0)
+        if "error" in obs_weather:
+            result_rows.append(
+                {
+                    "obs_index": idx,
+                    "image_date": image_date,
+                    "lat": lat,
+                    "lon": lon,
+                    "observed_spacing_m": row["observed_spacing_m"],
+                    "predicted_spacing_NL_m": float("nan"),
+                    "predicted_spacing_L_m": float("nan"),
+                    "error_NL_m": float("nan"),
+                    "error_L_m": float("nan"),
+                    "depth_m": depth,
+                    "fetch_m": fetch,
+                    "U10": float("nan"),
+                    "U10_representative": float("nan"),
+                    "U10_final_24h_mean": float("nan"),
+                    "U10_final_6h_mean": float("nan"),
+                    "U10_10day_mean": float("nan"),
+                    "U10_10day_std": float("nan"),
+                    "wind_dir_dominant": float("nan"),
+                    "wind_steadiness": float("nan"),
+                    "wind_regime": "",
+                    "Ra": float("nan"),
+                    "regime": "weather_error",
+                    "kappa": float("nan"),
+                    "selected_l": float("nan"),
+                    "target_l": float("nan"),
+                    "unstable_l_min": float("nan"),
+                    "unstable_l_max": float("nan"),
+                    "peak_growth_proxy": float("nan"),
+                    "amplitude_index": float("nan"),
+                    "development_index": float("nan"),
+                    "is_visible": False,
+                    "accumulation_factor": float("nan"),
+                    "w_down_max": float("nan"),
+                    "download_error": obs_weather["error"],
+                }
+            )
+            continue
+
+        forcing = extract_model_forcing(obs_weather["spinup"])
+        pre_context = summarise_context_window(obs_weather["pre_context"], "pre_context")
+        post_context = summarise_context_window(obs_weather["post_context"], "post_context")
+        wind_regime = classify_wind_regime(forcing, pre_context, post_context)
+        U10 = float(forcing["U10_representative"])
 
         params = LCParams(U10=U10, depth=depth, fetch=fetch)
-        pred = predict_spacing_and_visibility(params, profile_name=profile_name)
+        pred = predict_spacing_and_visibility(
+            params,
+            profile_name=profile_name,
+            use_lake_profile=use_lake_profile,
+        )
 
-        result_rows.append({
-            "obs_index": idx,
-            "image_date": str(row["image_date"]),
-            "lat": row["lat"],
-            "lon": row["lon"],
-            "observed_spacing_m": row["observed_spacing_m"],
-            "predicted_spacing_NL_m": pred["spacing_nonlinear"],
-            "predicted_spacing_L_m": pred["spacing_linear"],
-            "error_NL_m": pred["spacing_nonlinear"] - row["observed_spacing_m"]
-                          if not math.isnan(pred["spacing_nonlinear"]) else float("nan"),
-            "error_L_m": pred["spacing_linear"] - row["observed_spacing_m"]
-                         if not math.isnan(pred["spacing_linear"]) else float("nan"),
-            "depth_m": depth,
-            "fetch_m": fetch,
-            "U10": U10,
-            "Ra": pred["Ra"],
-            "regime": pred["regime"],
-            "kappa": pred["kappa"],
-            "is_visible": pred["is_visible"],
-            "accumulation_factor": pred["accumulation_factor"],
-            "w_down_max": pred["w_down_max"],
-        })
+        result_rows.append(
+            {
+                "obs_index": idx,
+                "image_date": image_date,
+                "lat": lat,
+                "lon": lon,
+                "observed_spacing_m": row["observed_spacing_m"],
+                "predicted_spacing_NL_m": pred["spacing_nonlinear"],
+                "predicted_spacing_L_m": pred["spacing_linear"],
+                "error_NL_m": pred["spacing_nonlinear"] - row["observed_spacing_m"]
+                if not math.isnan(pred["spacing_nonlinear"])
+                else float("nan"),
+                "error_L_m": pred["spacing_linear"] - row["observed_spacing_m"]
+                if not math.isnan(pred["spacing_linear"])
+                else float("nan"),
+                "depth_m": depth,
+                "fetch_m": fetch,
+                "U10": U10,
+                "U10_representative": U10,
+                "U10_final_24h_mean": forcing["U10_final_24h_mean"],
+                "U10_final_6h_mean": forcing["U10_final_6h_mean"],
+                "U10_10day_mean": forcing["U10_10day_mean"],
+                "U10_10day_std": forcing["U10_10day_std"],
+                "wind_dir_dominant": forcing["wind_dir_dominant"],
+                "wind_steadiness": forcing["wind_steadiness"],
+                "wind_regime": wind_regime,
+                "Ra": pred["Ra"],
+                "regime": pred["regime"],
+                "kappa": pred["kappa"],
+                "selected_l": pred.get("selected_l", float("nan")),
+                "target_l": pred.get("target_l", float("nan")),
+                "unstable_l_min": pred.get("unstable_l_min", float("nan")),
+                "unstable_l_max": pred.get("unstable_l_max", float("nan")),
+                "peak_growth_proxy": pred.get("peak_growth_proxy", float("nan")),
+                "amplitude_index": pred.get("amplitude_index", float("nan")),
+                "development_index": pred.get("development_index", float("nan")),
+                "is_visible": pred["is_visible"],
+                "accumulation_factor": pred["accumulation_factor"],
+                "w_down_max": pred["w_down_max"],
+                "download_error": "",
+            }
+        )
+        weather_rows.append(
+            {
+                "obs_index": idx,
+                "image_date": image_date,
+                **forcing,
+                "pre_wind_mean": pre_context["wind_mean"],
+                "post_wind_mean": post_context["wind_mean"],
+                "pre_temp_mean": pre_context["temp_mean"],
+                "post_temp_mean": post_context["temp_mean"],
+                "wind_regime": wind_regime,
+            }
+        )
+
+        timeline_df, diagnostics = predict_observation_timeline(
+            row,
+            obs_weather,
+            profile_name=profile_name,
+            use_lake_profile=use_lake_profile,
+            hours_before=timeline_hours_before,
+            hours_after=timeline_hours_after,
+            observation_hour_utc=observation_hour_utc,
+        )
+        if len(timeline_df) > 0 and diagnostics.get("status") == "complete":
+            obs_key = str(row.get("observation_id", f"obs_{idx:03d}"))
+            timeline_frames[obs_key] = timeline_df
+            diagnostics_rows.append(diagnostics)
 
     results = pd.DataFrame(result_rows)
+    weather_summary = pd.DataFrame(weather_rows)
+    observation_diagnostics = pd.DataFrame(diagnostics_rows)
+    diagnostic_model = (
+        fit_interpretable_diagnostic_model(observation_diagnostics)
+        if len(observation_diagnostics) > 0
+        else None
+    )
 
     # Compute metrics
     valid_nl = results.dropna(subset=["predicted_spacing_NL_m"])
@@ -315,7 +472,7 @@ def validate_nonlinear(
 
     metrics = {
         "spacing_column": spacing_column,
-        "profile": profile_name,
+        "profile": "shallow_lake_dynamic" if use_lake_profile else profile_name,
         "n_observations": int(len(results)),
         "n_valid_NL": int(len(valid_nl)),
         "n_valid_L": int(len(valid_l)),
@@ -343,12 +500,24 @@ def validate_nonlinear(
         metrics["capture_rate_2x_NL"] = float(((ratio > 0.5) & (ratio < 2.0)).mean())
 
     # R0 and kappa from the model
-    metrics["R0"] = float(nl_result.R0)
-    metrics["kappa"] = float(nl_result.kappa)
-    metrics["lcNL"] = float(nl_result.lcNL)
-    metrics["lcL"] = float(nl_result.linear_result.lcL)
-    metrics["RcNL"] = float(nl_result.RcNL)
-    metrics["RcL"] = float(nl_result.linear_result.RcL)
+    if nl_result is not None:
+        metrics["R0"] = float(nl_result.R0)
+        metrics["kappa"] = float(nl_result.kappa)
+        metrics["lcNL"] = float(nl_result.lcNL)
+        metrics["lcL"] = float(nl_result.linear_result.lcL)
+        metrics["RcNL"] = float(nl_result.RcNL)
+        metrics["RcL"] = float(nl_result.linear_result.RcL)
+    elif len(valid_nl) > 0:
+        metrics["kappa_mean"] = float(valid_nl["kappa"].mean())
+        metrics["kappa_min"] = float(valid_nl["kappa"].min())
+        metrics["kappa_max"] = float(valid_nl["kappa"].max())
+        metrics["Ra_mean"] = float(valid_nl["Ra"].mean())
+        metrics["Ra_min"] = float(valid_nl["Ra"].min())
+        metrics["Ra_max"] = float(valid_nl["Ra"].max())
+
+    if diagnostic_model is not None:
+        metrics["diagnostic_best_family"] = diagnostic_model.get("best_family_by_loocv_r2")
+        metrics["diagnostic_best_family_loocv_r2"] = diagnostic_model.get("best_family_loocv_r2")
 
     # Confounder checks
     confounder = check_wind_spacing_confounders(results)
@@ -356,21 +525,31 @@ def validate_nonlinear(
 
     # Envelope
     envelopes = nonlinear_consistency_envelope(
-        results, depths=[5.0, 9.0, 15.0], profile_name=profile_name
+        results,
+        depths=[5.0, 9.0, 15.0],
+        profile_name=profile_name,
+        use_lake_profile=use_lake_profile,
     )
 
     # Kappa diagnostic
     kappa_check = None
     if len(valid_nl) > 0:
-        kappa_check = kappa_diagnostic(results, profile_name=profile_name)
+        kappa_check = kappa_diagnostic(
+            results,
+            profile_name=profile_name,
+            use_lake_profile=use_lake_profile,
+        )
 
     result = NonlinearValidationResult(
         results=results,
+        weather_summary=weather_summary,
+        observation_diagnostics=observation_diagnostics,
         metrics=metrics,
         envelopes=envelopes,
         confounder_check=confounder,
         quality_check=quality,
         kappa_check=kappa_check,
+        diagnostic_model=diagnostic_model,
     )
 
     # Write outputs
@@ -378,6 +557,12 @@ def validate_nonlinear(
         out = Path(output_dir)
         out.mkdir(parents=True, exist_ok=True)
         results.to_csv(out / "results.csv", index=False)
+        weather_summary.to_csv(out / "weather_summary.csv", index=False)
+        if len(observation_diagnostics) > 0:
+            write_observation_timelines(observation_diagnostics, timeline_frames, out)
+        if diagnostic_model is not None:
+            with (out / "diagnostic_model.json").open("w") as f:
+                json.dump(diagnostic_model, f, indent=2, default=str)
         with (out / "metrics.json").open("w") as f:
             json.dump(metrics, f, indent=2, default=str)
         with (out / "confounder_check.json").open("w") as f:

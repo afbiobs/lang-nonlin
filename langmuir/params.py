@@ -90,8 +90,14 @@ class LCParams:
             k_p = brentq(disp, 1e-8, k_upper)
 
         a = self.H_s / 2.0
-        denom = 2.0 * math.sinh(k_p * depth) ** 2
-        self.D_max = (omega_p * k_p * a**2) * math.cosh(2.0 * k_p * depth) / max(denom, 1e-12)
+        kh = k_p * depth
+        # Stable form of cosh(2kh) / (2 sinh(kh)^2) = 1 + 1 / (2 sinh(kh)^2).
+        if abs(kh) < 20.0:
+            sinh_kh = math.sinh(kh)
+            drift_factor = 1.0 + 1.0 / max(2.0 * sinh_kh**2, 1e-12)
+        else:
+            drift_factor = 1.0
+        self.D_max = (omega_p * k_p * a**2) * drift_factor
 
         # 4. Eddy viscosity (depth-averaged parabolic profile)
         self.nu_T = self.kappa_vk * self.u_star * depth / 6.0

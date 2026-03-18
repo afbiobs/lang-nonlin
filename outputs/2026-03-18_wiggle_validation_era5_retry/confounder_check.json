@@ -1,0 +1,11 @@
+{
+  "r_wind_spacing": 0.0263692956739032,
+  "r_partial_depth_controlled": 0.02636929567390322,
+  "within_location_slopes": [
+    -22.176804004250556,
+    -2.46705766164217,
+    -24.216909278188655
+  ],
+  "mean_within_slope": -16.286923648027127,
+  "status": "complete"
+}

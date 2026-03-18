@@ -8,14 +8,315 @@ not cell spacing.
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 
 import numpy as np
 
 from .params import LCParams
-from .profiles import ShearDriftProfile, get_profile, shallow_lake_profile
+from .profiles import get_profile, shallow_lake_profile
 from .robin_bc import RobinBoundaryConditions
-from .nonlinear_solver import NonlinearResult, solve_nonlinear
-from .rayleigh_mapping import wind_to_rayleigh, classify_regime, unstable_band, fastest_growing_mode
+from .nonlinear_solver import solve_nonlinear
+from .rayleigh_mapping import classify_regime, unstable_band
+
+
+@dataclass
+class LangmuirModeState:
+    """Finite-time mode state used to evolve spacing through changing forcing."""
+
+    selected_l: float | None = None
+    target_l: float | None = None
+    amplitude_index: float = 0.0
+    development_index: float = 0.0
+    regime: str = "subcritical"
+
+
+def supercritical_mode_spectrum(
+    Ra: float,
+    neutral_curve_NL,
+    lcNL: float,
+    *,
+    n_scan: int = 256,
+    spectrum_power: float = 2.0,
+) -> dict:
+    """Build a finite-width supercritical spectrum and derive a target mode.
+
+    The previous implementation maximised ``Ra - R_bar(l)`` directly, which is
+    insensitive to Ra because the additive Ra term does not affect the argmax.
+    Here we instead use the full unstable band and a weighted centroid of the
+    supercriticality spectrum so the preferred mode shifts as the band widens.
+    """
+    if lcNL <= 0.0:
+        return {
+            "l_min": float("nan"),
+            "l_max": float("nan"),
+            "l_scan": np.array([], dtype=float),
+            "growth_proxy": np.array([], dtype=float),
+            "target_l": float("nan"),
+            "peak_growth_proxy": 0.0,
+        }
+
+    l_scan_full = np.linspace(0.15 * lcNL, 4.0 * lcNL, n_scan)
+    l_min, l_max = unstable_band(Ra, neutral_curve_NL, l_scan_full)
+    if math.isnan(l_min) or math.isnan(l_max):
+        return {
+            "l_min": float("nan"),
+            "l_max": float("nan"),
+            "l_scan": np.array([], dtype=float),
+            "growth_proxy": np.array([], dtype=float),
+            "target_l": float("nan"),
+            "peak_growth_proxy": 0.0,
+        }
+
+    l_scan = np.linspace(l_min, l_max, n_scan)
+    neutral_vals = np.array([neutral_curve_NL(li) for li in l_scan])
+    growth_proxy = np.clip(Ra / np.maximum(neutral_vals, 1e-12) - 1.0, 0.0, None)
+    if not np.any(growth_proxy > 0.0):
+        target_l = lcNL
+        peak_growth_proxy = 0.0
+    else:
+        weights = growth_proxy ** spectrum_power
+        target_l = float(np.sum(l_scan * weights) / np.sum(weights))
+        peak_growth_proxy = float(np.max(growth_proxy))
+
+    return {
+        "l_min": float(l_min),
+        "l_max": float(l_max),
+        "l_scan": l_scan,
+        "growth_proxy": growth_proxy,
+        "target_l": float(target_l),
+        "peak_growth_proxy": peak_growth_proxy,
+    }
+
+
+def advance_langmuir_state(
+    params: LCParams,
+    *,
+    profile_name: str = "uniform",
+    use_lake_profile: bool = False,
+    previous_state: LangmuirModeState | None = None,
+    dt_hours: float | None = None,
+    relaxation_hours: float = 12.0,
+    decay_hours: float = 18.0,
+    forcing_coherence: float = 1.0,
+) -> dict:
+    """Advance the Langmuir mode through one forcing step.
+
+    ``development_index`` is a simple finite-time proxy for how fully the
+    Langmuir pattern has adjusted to the current forcing. ``selected_l`` relaxes
+    toward the instantaneous supercritical target mode on a configurable
+    timescale, which enables future observation-centred 48 h analyses.
+    """
+    if use_lake_profile:
+        try:
+            profile = shallow_lake_profile(params)
+        except Exception:
+            profile = get_profile(profile_name)
+    else:
+        profile = get_profile(profile_name)
+
+    bcs = RobinBoundaryConditions(params.gamma_s, params.gamma_b)
+    try:
+        nl_result = solve_nonlinear(profile, bcs, max_order=8)
+    except Exception as exc:
+        return {
+            "spacing_nonlinear": float("nan"),
+            "spacing_linear": float("nan"),
+            "selected_l": float("nan"),
+            "target_l": float("nan"),
+            "unstable_l_min": float("nan"),
+            "unstable_l_max": float("nan"),
+            "peak_growth_proxy": 0.0,
+            "amplitude_index": 0.0,
+            "development_index": 0.0,
+            "mode_state": LangmuirModeState(),
+            "kappa": float("nan"),
+            "regime": "subcritical",
+            "is_visible": False,
+            "accumulation_factor": 0.0,
+            "bloom_feedback": 0.0,
+            "w_down_max": 0.0,
+            "Ra": params.Ra,
+            "error": str(exc),
+        }
+
+    Ra = params.Ra
+    R0 = nl_result.R0
+    RcNL = nl_result.RcNL
+    lcNL = nl_result.lcNL
+    lcL = nl_result.linear_result.lcL
+    regime = classify_regime(Ra, R0, RcNL)
+
+    if previous_state is None:
+        previous_state = LangmuirModeState()
+    coherence = min(max(float(forcing_coherence), 0.0), 1.0)
+
+    spacing_l = 2.0 * math.pi / lcL * params.depth if lcL > 0 else float("nan")
+
+    if regime == "subcritical" or lcNL <= 0.0:
+        dt_eff = max(float(dt_hours or decay_hours), 1e-6)
+        alpha_amp = 1.0 - math.exp(-dt_eff / max(decay_hours, 1e-6))
+        amplitude_index = previous_state.amplitude_index + alpha_amp * (0.0 - previous_state.amplitude_index)
+        development_index = previous_state.development_index + alpha_amp * (
+            0.0 - previous_state.development_index
+        )
+        mode_state = LangmuirModeState(
+            selected_l=previous_state.selected_l,
+            target_l=float("nan"),
+            amplitude_index=float(amplitude_index),
+            development_index=float(development_index),
+            regime=regime,
+        )
+        spacing_nl = float("nan")
+        selected_l = float("nan")
+        target_l = float("nan")
+        spectrum = {
+            "l_min": float("nan"),
+            "l_max": float("nan"),
+            "peak_growth_proxy": 0.0,
+        }
+    else:
+        spectrum = supercritical_mode_spectrum(Ra, nl_result.neutral_curve_NL, lcNL)
+        target_l = spectrum["target_l"]
+        peak_growth_proxy = spectrum["peak_growth_proxy"]
+        supercriticality = max((Ra - RcNL) / max(RcNL, 1e-12), 0.0)
+        activity_target = coherence * (supercriticality / (1.0 + supercriticality))
+
+        if dt_hours is None:
+            amplitude_index = activity_target
+        else:
+            dt_eff = max(float(dt_hours), 1e-6)
+            amp_relax_hours = relaxation_hours / max(0.5 + 1.5 * max(activity_target, 0.0), 1e-6)
+            alpha_amp = 1.0 - math.exp(-dt_eff / max(amp_relax_hours, 1e-6))
+            amplitude_index = previous_state.amplitude_index + alpha_amp * (
+                activity_target - previous_state.amplitude_index
+            )
+
+        if dt_hours is None or previous_state.selected_l is None or math.isnan(previous_state.selected_l):
+            selected_l = target_l
+        else:
+            dt_eff = max(float(dt_hours), 1e-6)
+            growth_accel = 0.5 + 2.5 * max(amplitude_index, 0.0)
+            alpha = 1.0 - math.exp(-dt_eff * growth_accel / max(relaxation_hours, 1e-6))
+            selected_l = previous_state.selected_l + alpha * (target_l - previous_state.selected_l)
+
+        mode_mismatch = abs(selected_l - target_l) / max(abs(target_l), 1e-6)
+        organization_target = amplitude_index * math.exp(-mode_mismatch / 0.15)
+        if dt_hours is None:
+            development_index = organization_target
+        else:
+            alpha_dev = 1.0 - math.exp(-dt_eff / max(0.75 * relaxation_hours, 1e-6))
+            development_index = previous_state.development_index + alpha_dev * (
+                organization_target - previous_state.development_index
+            )
+
+        mode_state = LangmuirModeState(
+            selected_l=float(selected_l),
+            target_l=float(target_l),
+            amplitude_index=float(amplitude_index),
+            development_index=float(development_index),
+            regime=regime,
+        )
+        spacing_nl = 2.0 * math.pi / selected_l * params.depth if selected_l > 0 else float("nan")
+
+    accum_l = (
+        mode_state.selected_l
+        if mode_state.selected_l is not None and not math.isnan(mode_state.selected_l)
+        else (lcNL if lcNL > 0 else 0.1)
+    )
+    accum = surface_accumulation_index(
+        l=accum_l,
+        Ra=Ra,
+        RcNL=RcNL,
+        psi_tilde_1_coeffs=nl_result.linear_result.psi_tilde_1_coeffs,
+        v_float=params.v_float,
+        depth=params.depth,
+        u_star=params.u_star,
+    )
+
+    if accum["w_down_max"] > 0:
+        residence_time = params.depth / max(accum["w_down_max"], 1e-10)
+    else:
+        residence_time = float("inf")
+
+    feedback = bloom_feedback_potential(
+        accum["accumulation_factor"],
+        min(residence_time, 1e6),
+    )
+
+    return {
+        "spacing_nonlinear": spacing_nl,
+        "spacing_linear": spacing_l,
+        "selected_l": float(mode_state.selected_l) if mode_state.selected_l is not None else float("nan"),
+        "target_l": float(mode_state.target_l) if mode_state.target_l is not None else float("nan"),
+        "unstable_l_min": float(spectrum["l_min"]),
+        "unstable_l_max": float(spectrum["l_max"]),
+        "peak_growth_proxy": float(spectrum["peak_growth_proxy"]),
+        "amplitude_index": float(mode_state.amplitude_index),
+        "development_index": float(mode_state.development_index),
+        "mode_state": mode_state,
+        "kappa": nl_result.kappa,
+        "regime": regime,
+        "is_visible": accum["is_visible"],
+        "accumulation_factor": accum["accumulation_factor"],
+        "bloom_feedback": feedback,
+        "w_down_max": accum["w_down_max"],
+        "Ra": Ra,
+        "R0": R0,
+        "RcNL": RcNL,
+        "lcNL": lcNL,
+        "lcL": lcL,
+        "aspect_ratio": nl_result.aspect_ratio,
+    }
+
+
+def predict_spacing_evolution(
+    params_series: list[LCParams],
+    *,
+    times: list | None = None,
+    profile_name: str = "uniform",
+    use_lake_profile: bool = False,
+    initial_state: LangmuirModeState | None = None,
+    default_dt_hours: float = 1.0,
+    relaxation_hours: float = 12.0,
+    decay_hours: float = 18.0,
+    forcing_coherence: list[float] | None = None,
+) -> list[dict]:
+    """Predict Langmuir spacing and development through a forcing time series.
+
+    This is intended for observation-centred windows such as 48 h before/after
+    an image time. Pass hourly or coarser LCParams snapshots plus optional
+    matching timestamps. Each returned row includes the evolving mode state.
+    """
+    rows: list[dict] = []
+    state = initial_state
+
+    for idx, params in enumerate(params_series):
+        dt_hours = default_dt_hours
+        if times is not None and idx > 0:
+            delta = times[idx] - times[idx - 1]
+            if hasattr(delta, "total_seconds"):
+                dt_hours = max(delta.total_seconds() / 3600.0, 1e-6)
+
+        result = advance_langmuir_state(
+            params,
+            profile_name=profile_name,
+            use_lake_profile=use_lake_profile,
+            previous_state=state,
+            dt_hours=dt_hours,
+            relaxation_hours=relaxation_hours,
+            decay_hours=decay_hours,
+            forcing_coherence=forcing_coherence[idx] if forcing_coherence is not None else 1.0,
+        )
+        row = dict(result)
+        row.pop("mode_state", None)
+        row["step_index"] = idx
+        if times is not None:
+            row["time"] = times[idx]
+            row["dt_hours"] = dt_hours
+        rows.append(row)
+        state = result["mode_state"]
+
+    return rows
 
 
 def surface_accumulation_index(
@@ -103,99 +404,10 @@ def predict_spacing_and_visibility(params: LCParams,
 
     Returns dict with spacing predictions, regime info, and biological diagnostics.
     """
-    # Get profile
-    if use_lake_profile:
-        try:
-            profile = shallow_lake_profile(params)
-        except Exception:
-            profile = get_profile(profile_name)
-    else:
-        profile = get_profile(profile_name)
-
-    bcs = RobinBoundaryConditions(params.gamma_s, params.gamma_b)
-
-    # Solve nonlinear problem
-    try:
-        nl_result = solve_nonlinear(profile, bcs, max_order=8)
-    except Exception as e:
-        # Fallback: return subcritical result
-        return {
-            "spacing_nonlinear": float("nan"),
-            "spacing_linear": float("nan"),
-            "kappa": float("nan"),
-            "regime": "subcritical",
-            "is_visible": False,
-            "accumulation_factor": 0.0,
-            "bloom_feedback": 0.0,
-            "w_down_max": 0.0,
-            "Ra": params.Ra,
-            "error": str(e),
-        }
-
-    Ra = params.Ra
-    R0 = nl_result.R0
-    RcNL = nl_result.RcNL
-    lcNL = nl_result.lcNL
-    lcL = nl_result.linear_result.lcL
-
-    regime = classify_regime(Ra, R0, RcNL)
-
-    # Dimensional spacing = 2*pi / l_c * depth
-    if lcNL > 0:
-        spacing_nl = 2.0 * math.pi / lcNL * params.depth
-    else:
-        spacing_nl = float("nan")
-
-    if lcL > 0:
-        spacing_l = 2.0 * math.pi / lcL * params.depth
-    else:
-        spacing_l = float("nan")
-
-    # For supercritical regimes, find the fastest-growing mode
-    if regime != "subcritical" and lcNL > 0:
-        l_scan = np.linspace(0.01 * lcNL, 3.0 * lcNL, 100)
-        l_fastest = fastest_growing_mode(Ra, nl_result.neutral_curve_NL, l_scan)
-        if not math.isnan(l_fastest):
-            spacing_nl = 2.0 * math.pi / l_fastest * params.depth
-    elif regime == "subcritical":
-        spacing_nl = float("nan")
-        spacing_l = float("nan")
-
-    # Surface visibility
-    accum = surface_accumulation_index(
-        l=lcNL if lcNL > 0 else 0.1,
-        Ra=Ra,
-        RcNL=RcNL,
-        psi_tilde_1_coeffs=nl_result.linear_result.psi_tilde_1_coeffs,
-        v_float=params.v_float,
-        depth=params.depth,
-        u_star=params.u_star,
+    result = advance_langmuir_state(
+        params,
+        profile_name=profile_name,
+        use_lake_profile=use_lake_profile,
     )
-
-    # Bloom feedback
-    if accum["w_down_max"] > 0:
-        residence_time = params.depth / max(accum["w_down_max"], 1e-10)
-    else:
-        residence_time = float("inf")
-
-    feedback = bloom_feedback_potential(
-        accum["accumulation_factor"],
-        min(residence_time, 1e6),
-    )
-
-    return {
-        "spacing_nonlinear": spacing_nl,
-        "spacing_linear": spacing_l,
-        "kappa": nl_result.kappa,
-        "regime": regime,
-        "is_visible": accum["is_visible"],
-        "accumulation_factor": accum["accumulation_factor"],
-        "bloom_feedback": feedback,
-        "w_down_max": accum["w_down_max"],
-        "Ra": Ra,
-        "R0": R0,
-        "RcNL": RcNL,
-        "lcNL": lcNL,
-        "lcL": lcL,
-        "aspect_ratio": nl_result.aspect_ratio,
-    }
+    result.pop("mode_state", None)
+    return result
