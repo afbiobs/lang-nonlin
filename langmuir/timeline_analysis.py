@@ -112,7 +112,7 @@ def predict_observation_timeline(
     obs_weather: dict,
     *,
     profile_name: str = "uniform",
-    use_lake_profile: bool = False,
+    use_lake_profile: bool = True,
     hours_before: int = DEFAULT_TIMELINE_HOURS_BEFORE,
     hours_after: int = DEFAULT_TIMELINE_HOURS_AFTER,
     observation_hour_utc: int = DEFAULT_OBSERVATION_HOUR_UTC,
