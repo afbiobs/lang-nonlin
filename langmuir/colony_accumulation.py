@@ -48,6 +48,7 @@ class LangmuirModeState:
     decay_age_hours: float = 0.0
     response_separation: float = 0.0
     forcing_intensity: float = 0.0
+    aggregation_log2: float = 0.0
     buoyancy_Q: float = 0.15
     rho_cell: float = 990.0
     v_float: float = 1.0e-4
@@ -70,6 +71,8 @@ class LangmuirDynamicsConfig:
     decay_memory_hours: float = 0.75
     spacing_growth_hours: float = 0.5
     spacing_decay_hours: float = 2.0
+    aggregation_doubling_hours: float = 5.0
+    aggregation_max_log2: float = 3.46
     visibility_on_hours: float = 0.25
     visibility_off_hours: float = 1.0
 
@@ -379,6 +382,7 @@ def _empty_prediction_result(
         "large_scale_fraction": 0.0,
         "visible_fraction": 0.0,
         "coarsening_index": 0.0,
+        "aggregation_log2": 0.0,
         "drive_fast": 0.0,
         "drive_slow": 0.0,
         "direction_persistence": 0.0,
@@ -607,6 +611,13 @@ def advance_langmuir_state(
             tau_rise=fast_memory_hours,
             tau_fall=slow_memory_hours,
         )
+        aggregation_log2 = _evolve_state_variable(
+            previous_state.aggregation_log2,
+            0.0,
+            dt_hours=dt_eff,
+            tau_rise=slow_memory_hours,
+            tau_fall=spacing_decay_hours,
+        )
         development_index = visible_fraction * (0.20 + 0.80 * max(coarsening_index, drive_slow))
         spacing_cl = prev_cl_spacing
         spacing_response = prev_response_spacing
@@ -648,6 +659,7 @@ def advance_langmuir_state(
             decay_age_hours=float(decay_age_hours),
             response_separation=float(response_separation),
             forcing_intensity=float(forcing_intensity),
+            aggregation_log2=float(aggregation_log2),
             buoyancy_Q=buoyancy_Q,
             rho_cell=rho_cell,
             v_float=v_float,
@@ -756,25 +768,38 @@ def advance_langmuir_state(
             spacing_response = spacing_cl
 
         response_separation = _clip01(max(spacing_response - spacing_cl, 0.0) / max(spacing_response, spacing_cl, 1.0e-12))
-        coarsening_target = _clip01(
-            response_separation
-            * (0.20 + 0.80 * response_mix)
-            * (0.25 + 0.75 * large_scale_fraction)
-            * drive_fast
-            * drive_slow
-            * max(direction_persistence, 0.15)
-            * (0.30 + 0.70 * persistent_drive)
+
+        # --- Aggregation via vortex pairing (log-time process) ---
+        # Merging rate: each doubling takes T_merge hours, sped up by
+        # supercriticality and forcing intensity. The aggregation_log2
+        # state tracks how many doublings have accumulated.
+        agg_max = dynamics.aggregation_max_log2  # ~3.46 → max 2^3.46 ≈ 11x
+        base_doubling = dynamics.aggregation_doubling_hours
+        # Stronger forcing → faster merging
+        merge_speedup = (
+            0.5
+            + 0.5 * supercritical_drive
+            + 0.3 * min(forcing_intensity / max(math.log1p(100.0), 1.0), 1.0)
+            + 0.2 * drive_fast
         )
-        coarsening_index = _evolve_state_variable(
-            previous_state.coarsening_index,
-            coarsening_target,
+        effective_doubling_hours = base_doubling / max(merge_speedup, 0.10)
+        # Target aggregation: grows with coherent forcing time
+        agg_target = min(event_age_hours / max(effective_doubling_hours, 0.10), agg_max)
+        aggregation_log2 = _evolve_state_variable(
+            previous_state.aggregation_log2,
+            agg_target if event_active else 0.0,
             dt_hours=dt_eff,
-            tau_rise=slow_memory_hours,
+            tau_rise=effective_doubling_hours,
             tau_fall=spacing_decay_hours,
         )
+        # Cap aggregation at the response/CL spacing ratio — cells can't
+        # grow past the energy-containing response scale.
+        response_cl_ratio = max(spacing_response, spacing_cl) / max(spacing_cl, 1.0e-6)
+        effective_max_log2 = min(agg_max, math.log2(max(response_cl_ratio, 1.01)))
+        aggregation_ratio = 2.0 ** min(aggregation_log2, effective_max_log2)
+        coarsening_index = _clip01(aggregation_log2 / max(agg_max, 0.01))
 
-        intensity_stretch = 1.0 + 0.3 * (forcing_intensity / (1.0 + forcing_intensity))
-        core_spacing_target = spacing_cl + coarsening_index * intensity_stretch * max(spacing_response - spacing_cl, 0.0)
+        core_spacing_target = spacing_cl * aggregation_ratio
         target_l = _l_from_spacing(core_spacing_target, params.depth)
         spacing_core = _evolve_state_variable(
             prev_core_spacing,
@@ -846,6 +871,7 @@ def advance_langmuir_state(
             decay_age_hours=float(decay_age_hours),
             response_separation=float(response_separation),
             forcing_intensity=float(forcing_intensity),
+            aggregation_log2=float(aggregation_log2),
             buoyancy_Q=buoyancy_Q,
             rho_cell=rho_cell,
             v_float=v_float,
@@ -905,6 +931,7 @@ def advance_langmuir_state(
         "large_scale_fraction": float(mode_state.large_scale_fraction),
         "visible_fraction": float(mode_state.visible_fraction),
         "coarsening_index": float(mode_state.coarsening_index),
+        "aggregation_log2": float(mode_state.aggregation_log2),
         "drive_fast": float(mode_state.drive_fast),
         "drive_slow": float(mode_state.drive_slow),
         "direction_persistence": float(mode_state.direction_persistence),
