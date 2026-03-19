@@ -541,11 +541,13 @@ def advance_langmuir_state(
             coherence=coherence,
             dynamics=dynamics,
         )
+        max_coherent_hours = 4.0 * relax_hours
         coherent_run_hours = (
             previous_state.coherent_run_hours + dt_eff * run_drive
             if run_drive > 0.0
             else previous_state.coherent_run_hours * math.exp(-dt_eff / max(coherence_decay_hours, 1.0e-6))
         )
+        coherent_run_hours = min(coherent_run_hours, max_coherent_hours)
         setup_index = _clip01(1.0 - math.exp(-coherent_run_hours / max(relax_hours, 1.0e-6)))
         persistent_drive = 1.0 - math.exp(-coherent_run_hours / max(merge_min_age_hours, 1.0e-6))
 
@@ -598,12 +600,14 @@ def advance_langmuir_state(
         if not math.isfinite(spacing_response):
             spacing_response = spacing_cl
 
+        supercritical_drive = supercriticality / (supercriticality + 0.45)
         coarsening_target = _clip01(
             (
-                0.20
-                + 0.40 * response_mix
-                + 0.25 * large_scale_fraction
-                + 0.15 * persistent_drive
+                0.10
+                + 0.30 * response_mix
+                + 0.20 * large_scale_fraction
+                + 0.10 * persistent_drive
+                + 0.30 * supercritical_drive
             )
             * (0.25 + 0.75 * setup_index)
         )
@@ -617,10 +621,19 @@ def advance_langmuir_state(
         coarsening_index = previous_state.coarsening_index + alpha_coarsen * (
             coarsening_target - previous_state.coarsening_index
         )
+        if supercriticality < 0.3:
+            onset_decay = (1.0 - supercriticality / 0.3) * 0.15
+            coarsening_index *= (1.0 - onset_decay * min(dt_eff, 1.0))
         coarsening_index = _clip01(coarsening_index)
 
         core_spacing_target = spacing_cl + coarsening_index * max(spacing_response - spacing_cl, 0.0)
-        target_l = _l_from_spacing(core_spacing_target, params.depth)
+        spectrum_spacing = _spacing_from_l(hybrid.visible_target_l, params.depth)
+        if math.isfinite(spectrum_spacing) and spectrum_spacing > 0.0:
+            spectrum_weight = 0.35 * response_mix * setup_index
+            blended_spacing = (1.0 - spectrum_weight) * core_spacing_target + spectrum_weight * spectrum_spacing
+        else:
+            blended_spacing = core_spacing_target
+        target_l = _l_from_spacing(blended_spacing, params.depth)
 
         visible_relax_hours = max(0.65 * coarsen_hours, 0.20)
         alpha_visible_scale = 1.0 - math.exp(-dt_eff / max(visible_relax_hours, 1.0e-6))
