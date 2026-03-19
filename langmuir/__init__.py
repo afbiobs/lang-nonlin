@@ -18,9 +18,10 @@ from .colony_accumulation import (
     predict_spacing_evolution,
     supercritical_mode_spectrum,
 )
-from .era5 import build_era5_url, fetch_all_observations
+from .resolvent_spectrum import HybridSpacingSpectrum, build_hybrid_spacing_spectrum
+from .open_meteo_client import build_open_meteo_url, build_era5_url, fetch_all_observations
 from .timeline_analysis import fit_interpretable_diagnostic_model, predict_observation_timeline
-from .weather import extract_model_forcing, classify_wind_regime
+from .weather import extract_model_forcing, classify_wind_regime, summarise_spinup_forcing
 
 __all__ = [
     "LCParams",
@@ -39,10 +40,14 @@ __all__ = [
     "predict_spacing_and_visibility",
     "predict_spacing_evolution",
     "supercritical_mode_spectrum",
+    "HybridSpacingSpectrum",
+    "build_hybrid_spacing_spectrum",
+    "build_open_meteo_url",
     "build_era5_url",
     "fetch_all_observations",
     "predict_observation_timeline",
     "fit_interpretable_diagnostic_model",
     "extract_model_forcing",
+    "summarise_spinup_forcing",
     "classify_wind_regime",
 ]

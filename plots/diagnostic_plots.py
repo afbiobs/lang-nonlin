@@ -17,6 +17,7 @@ import pandas as pd
 import seaborn as sns
 from matplotlib import colors as mcolors
 from matplotlib import patches
+from output_locator import latest_timeline_output
 
 try:
     import cmasher as cmr
@@ -26,8 +27,8 @@ except ImportError:  # pragma: no cover - optional dependency
 
 ROOT = Path(__file__).resolve().parents[1]
 PLOTS_DIR = ROOT / "plots"
-MANUAL_DIR = ROOT / "outputs" / "2026-03-18_manual_validation_timeline_v1"
-WIGGLE_DIR = ROOT / "outputs" / "2026-03-18_wiggle_validation_timeline_v1"
+MANUAL_DIR = latest_timeline_output("manual")
+WIGGLE_DIR = latest_timeline_output("wiggle")
 DPI = 150
 DEFAULT_DEPTH_M = 9.0
 REGIME_COLORS = {
@@ -215,7 +216,7 @@ def plot_predicted_vs_observed(manual: DatasetBundle, wiggle: DatasetBundle) -> 
         ax.set_ylim(0, 400)
         ax.set_aspect("equal", adjustable="box")
         ax.set_xlabel("Observed spacing (m)")
-        ax.set_ylabel("Predicted spacing at observation (m)")
+        ax.set_ylabel("Predicted visible spacing at observation (m)")
 
     cbar = fig.colorbar(scatter, ax=axes, shrink=0.92)
     cbar.set_label("Mean wind over previous 48 h (m/s)")
@@ -311,8 +312,26 @@ def plot_example_timeline_evolution(manual: DatasetBundle) -> None:
             timeline["predicted_spacing_NL_m"],
             color="#d97706",
             linewidth=2.2,
-            label="Predicted NL spacing",
+            label="Visible spacing",
         )
+        if "predicted_spacing_CL_m" in timeline.columns:
+            axes[1].plot(
+                timeline["hours_from_observation"],
+                timeline["predicted_spacing_CL_m"],
+                color="#1d3557",
+                linewidth=1.8,
+                linestyle="--",
+                label="CL roll spacing",
+            )
+        if "predicted_spacing_response_m" in timeline.columns:
+            axes[1].plot(
+                timeline["hours_from_observation"],
+                timeline["predicted_spacing_response_m"],
+                color="#2a9d8f",
+                linewidth=1.8,
+                linestyle=":",
+                label="Response spacing",
+            )
         axes[1].plot(
             timeline["hours_from_observation"],
             target_spacing,
@@ -372,9 +391,9 @@ def plot_spacing_distribution_comparison(manual: DatasetBundle, wiggle: DatasetB
     fig, ax = plt.subplots(figsize=(13, 7), constrained_layout=True)
     distributions = [
         ("Manual observed", manual.results["observed_spacing_m"], "#1f77b4"),
-        ("Manual predicted", manual.results["predicted_spacing_NL_m"], "#ff7f0e"),
+        ("Manual visible", manual.results["predicted_spacing_NL_m"], "#ff7f0e"),
         ("Wiggle observed", wiggle.results["observed_spacing_m"], "#2a9d8f"),
-        ("Wiggle predicted", wiggle.results["predicted_spacing_NL_m"], "#c4512d"),
+        ("Wiggle visible", wiggle.results["predicted_spacing_NL_m"], "#c4512d"),
     ]
     bins = np.linspace(0, 400, 22)
     for label, values, color in distributions:
@@ -386,7 +405,7 @@ def plot_spacing_distribution_comparison(manual: DatasetBundle, wiggle: DatasetB
     ax.set_xlim(0, 400)
     ax.set_xlabel("Spacing (m)")
     ax.set_ylabel("Density")
-    ax.set_title("Observed and predicted spacing distributions across manual and wiggle datasets")
+    ax.set_title("Observed and visible-spacing distributions across manual and wiggle datasets")
     ax.legend(loc="upper right", fontsize=9, ncol=2)
     save_figure(fig, "plot04_spacing_distribution_comparison.png")
 
@@ -469,7 +488,7 @@ def plot_merging_dynamics(manual: DatasetBundle, wiggle: DatasetBundle) -> None:
     )
 
     axes[0].set_xlabel("Hours supercritical over previous 48 h")
-    axes[0].set_ylabel("Predicted spacing at observation (m)")
+    axes[0].set_ylabel("Visible spacing at observation (m)")
     axes[0].legend(loc="best", fontsize=9)
     cbar = fig.colorbar(scatter, ax=axes[0], shrink=0.9)
     cbar.set_label("Mean wind over previous 48 h (m/s)")

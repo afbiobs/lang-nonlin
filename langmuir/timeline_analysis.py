@@ -171,6 +171,8 @@ def predict_observation_timeline(
             decay_hours=decay_hours,
             forcing_coherence=float(coherence.loc[timestamp]),
             dynamics=dynamics,
+            shortwave_radiation=float(weather_row.get("shortwave_radiation", float("nan"))),
+            temperature_c=float(weather_row.get("temperature_2m", float("nan"))),
         )
         state = result["mode_state"]
 
@@ -202,10 +204,16 @@ def predict_observation_timeline(
                 0.0,
             ) if not math.isnan(result.get("RcNL", float("nan"))) else float("nan"),
             "predicted_spacing_NL_m": result["spacing_nonlinear"],
+            "predicted_spacing_CL_m": result.get("spacing_cl", float("nan")),
+            "predicted_spacing_response_m": result.get("spacing_response", float("nan")),
+            "predicted_spacing_visible_m": result.get("spacing_visible", result["spacing_nonlinear"]),
+            "predicted_spacing_observable_m": result.get("spacing_observable", float("nan")),
             "predicted_spacing_L_m": result["spacing_linear"],
             "selected_l": result["selected_l"],
             "target_l": result["target_l"],
             "response_target_l": result.get("response_target_l", float("nan")),
+            "selected_l_cl": result.get("selected_l_cl", float("nan")),
+            "target_l_cl": result.get("target_l_cl", float("nan")),
             "unstable_l_min": result["unstable_l_min"],
             "unstable_l_max": result["unstable_l_max"],
             "unstable_band_width": (
@@ -218,6 +226,11 @@ def predict_observation_timeline(
             "development_index": result["development_index"],
             "setup_index": result.get("setup_index", float("nan")),
             "coherent_run_hours": result.get("coherent_run_hours", float("nan")),
+            "response_bandwidth": result.get("response_bandwidth", float("nan")),
+            "response_mix": result.get("response_mix", float("nan")),
+            "large_scale_fraction": result.get("large_scale_fraction", float("nan")),
+            "visible_fraction": result.get("visible_fraction", float("nan")),
+            "coarsening_index": result.get("coarsening_index", float("nan")),
             "regime": result["regime"],
             "hydrodynamic_regime": result.get("hydrodynamic_regime", result["regime"]),
             "is_visible": result["is_visible"],
@@ -225,6 +238,13 @@ def predict_observation_timeline(
             "bloom_feedback": result["bloom_feedback"],
             "w_down_max": result["w_down_max"],
             "kappa": result["kappa"],
+            "wavenumber_ratio": result.get("wavenumber_ratio", float("nan")),
+            "rho_cell": result.get("rho_cell", float("nan")),
+            "v_float": result.get("v_float", float("nan")),
+            "tau_acc_s": result.get("tau_acc_s", float("nan")),
+            "resurfacing_time_s": result.get("resurfacing_time_s", float("nan")),
+            "fallback_triggered": bool(result.get("fallback_triggered", False)),
+            "physics_status": result.get("physics_status", ""),
         }
         rows.append(row)
 
@@ -283,8 +303,38 @@ def summarise_observation_timeline(
         "timeline_start_utc": str(df.index.min()),
         "timeline_end_utc": str(df.index.max()),
         "spacing_at_obs_m": float(obs_row["predicted_spacing_NL_m"]),
+        "spacing_cl_at_obs_m": float(obs_row["predicted_spacing_CL_m"])
+        if "predicted_spacing_CL_m" in obs_row
+        else float("nan"),
+        "spacing_response_at_obs_m": float(obs_row["predicted_spacing_response_m"])
+        if "predicted_spacing_response_m" in obs_row
+        else float("nan"),
+        "spacing_visible_at_obs_m": float(obs_row["predicted_spacing_visible_m"])
+        if "predicted_spacing_visible_m" in obs_row
+        else float("nan"),
+        "spacing_observable_at_obs_m": float(obs_row["predicted_spacing_observable_m"])
+        if "predicted_spacing_observable_m" in obs_row
+        else float("nan"),
         "spacing_linear_at_obs_m": float(obs_row["predicted_spacing_L_m"]),
+        "Ra_at_obs": float(obs_row["Ra"]),
+        "kappa_at_obs": float(obs_row["kappa"]) if "kappa" in obs_row else float("nan"),
+        "wavenumber_ratio_at_obs": float(obs_row["wavenumber_ratio"])
+        if "wavenumber_ratio" in obs_row
+        else float("nan"),
+        "regime_at_obs": str(obs_row["regime"]) if "regime" in obs_row else "",
+        "hydrodynamic_regime_at_obs": str(obs_row["hydrodynamic_regime"])
+        if "hydrodynamic_regime" in obs_row
+        else "",
         "spacing_mean_prev_48h_m": _safe_mean(pre_df["predicted_spacing_NL_m"]),
+        "spacing_cl_mean_prev_48h_m": _safe_mean(pre_df["predicted_spacing_CL_m"])
+        if "predicted_spacing_CL_m" in pre_df
+        else float("nan"),
+        "spacing_response_mean_prev_48h_m": _safe_mean(pre_df["predicted_spacing_response_m"])
+        if "predicted_spacing_response_m" in pre_df
+        else float("nan"),
+        "spacing_observable_mean_prev_48h_m": _safe_mean(pre_df["predicted_spacing_observable_m"])
+        if "predicted_spacing_observable_m" in pre_df
+        else float("nan"),
         "spacing_std_prev_48h_m": _safe_std(pre_df["predicted_spacing_NL_m"]),
         "spacing_range_prev_48h_m": _safe_max(pre_df["predicted_spacing_NL_m"]) - _safe_min(pre_df["predicted_spacing_NL_m"]),
         "spacing_mean_post_48h_m": _safe_mean(post_df["predicted_spacing_NL_m"]),
@@ -300,6 +350,12 @@ def summarise_observation_timeline(
         "lambda_p_mean_prev_48h": _safe_mean(pre_df["lambda_p"]),
         "La_t_mean_prev_48h": _safe_mean(pre_df["La_t"]),
         "D_max_mean_prev_48h": _safe_mean(pre_df["D_max"]),
+        "rho_cell_at_obs": float(obs_row["rho_cell"]) if "rho_cell" in obs_row else float("nan"),
+        "v_float_at_obs": float(obs_row["v_float"]) if "v_float" in obs_row else float("nan"),
+        "tau_acc_at_obs_s": float(obs_row["tau_acc_s"]) if "tau_acc_s" in obs_row else float("nan"),
+        "resurfacing_time_at_obs_s": float(obs_row["resurfacing_time_s"])
+        if "resurfacing_time_s" in obs_row
+        else float("nan"),
         "hours_supercritical_prev_48h": float((pre_df["regime"] == "supercritical").sum()),
         "hours_near_onset_prev_48h": float((pre_df["regime"] == "near_onset").sum()),
         "hours_hydrodynamic_supercritical_prev_48h": float((pre_df["hydrodynamic_regime"] != "subcritical").sum())
@@ -323,8 +379,41 @@ def summarise_observation_timeline(
         if "coherent_run_hours" in pre_df
         else float("nan"),
         "selected_l_at_obs": float(obs_row["selected_l"]),
+        "selected_l_cl_at_obs": float(obs_row["selected_l_cl"]) if "selected_l_cl" in obs_row else float("nan"),
+        "fallback_hours_prev_48h": float(pre_df["fallback_triggered"].sum()) if "fallback_triggered" in pre_df else 0.0,
+        "fallback_at_obs": bool(obs_row["fallback_triggered"]) if "fallback_triggered" in obs_row else False,
+        "physics_status_at_obs": str(obs_row["physics_status"]) if "physics_status" in obs_row else "",
         "response_target_l_at_obs": float(obs_row["response_target_l"]) if "response_target_l" in obs_row else float("nan"),
+        "target_l_cl_at_obs": float(obs_row["target_l_cl"]) if "target_l_cl" in obs_row else float("nan"),
         "selected_l_std_prev_48h": _safe_std(pre_df["selected_l"]),
+        "response_bandwidth_at_obs": float(obs_row["response_bandwidth"])
+        if "response_bandwidth" in obs_row
+        else float("nan"),
+        "response_bandwidth_mean_prev_48h": _safe_mean(pre_df["response_bandwidth"])
+        if "response_bandwidth" in pre_df
+        else float("nan"),
+        "response_mix_at_obs": float(obs_row["response_mix"]) if "response_mix" in obs_row else float("nan"),
+        "response_mix_mean_prev_48h": _safe_mean(pre_df["response_mix"])
+        if "response_mix" in pre_df
+        else float("nan"),
+        "large_scale_fraction_at_obs": float(obs_row["large_scale_fraction"])
+        if "large_scale_fraction" in obs_row
+        else float("nan"),
+        "large_scale_fraction_mean_prev_48h": _safe_mean(pre_df["large_scale_fraction"])
+        if "large_scale_fraction" in pre_df
+        else float("nan"),
+        "visible_fraction_at_obs": float(obs_row["visible_fraction"])
+        if "visible_fraction" in obs_row
+        else float("nan"),
+        "visible_fraction_mean_prev_48h": _safe_mean(pre_df["visible_fraction"])
+        if "visible_fraction" in pre_df
+        else float("nan"),
+        "coarsening_index_at_obs": float(obs_row["coarsening_index"])
+        if "coarsening_index" in obs_row
+        else float("nan"),
+        "coarsening_index_mean_prev_48h": _safe_mean(pre_df["coarsening_index"])
+        if "coarsening_index" in pre_df
+        else float("nan"),
         "unstable_band_width_mean_prev_48h": _safe_mean(pre_df["unstable_band_width"]),
         "peak_growth_mean_prev_48h": _safe_mean(pre_df["peak_growth_proxy"]),
         "wind_regime": classify_wind_regime(

@@ -3,6 +3,16 @@
 from __future__ import annotations
 
 import numpy as np
+from numpy.polynomial import polynomial as nppoly
+
+
+def poly_add(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """Add two polynomials represented in ascending-power coefficients."""
+    n = max(len(a), len(b))
+    result = np.zeros(n, dtype=float)
+    result[:len(a)] += np.asarray(a, dtype=float)
+    result[:len(b)] += np.asarray(b, dtype=float)
+    return result
 
 
 def poly_integrate(coeffs: np.ndarray, n_times: int = 1) -> np.ndarray:
@@ -25,19 +35,16 @@ def poly_multiply(a: np.ndarray, b: np.ndarray) -> np.ndarray:
 
 def poly_eval(coeffs: np.ndarray, z: np.ndarray | float) -> np.ndarray | float:
     """Evaluate polynomial sum(c_k z^k) at z."""
-    z = np.asarray(z, dtype=float)
-    result = np.zeros_like(z)
-    for k, ck in enumerate(coeffs):
-        result = result + ck * z**k
+    z_array = np.asarray(z, dtype=float)
+    result = nppoly.polyval(z_array, np.asarray(coeffs, dtype=float))
+    if np.isscalar(z):
+        return float(result)
     return result
 
 
 def poly_eval_at(coeffs: np.ndarray, z0: float) -> float:
     """Evaluate polynomial at a single point."""
-    val = 0.0
-    for k, ck in enumerate(coeffs):
-        val += ck * z0**k
-    return val
+    return float(nppoly.polyval(float(z0), np.asarray(coeffs, dtype=float)))
 
 
 def poly_definite_integral(coeffs: np.ndarray, a: float = -1.0, b: float = 0.0) -> float:

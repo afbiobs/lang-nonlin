@@ -16,6 +16,7 @@ import numpy as np
 from .profiles import ShearDriftProfile
 from .robin_bc import RobinBoundaryConditions
 from .utils import (
+    poly_add,
     poly_multiply,
     poly_integrate,
     poly_eval_at,
@@ -202,11 +203,11 @@ def solve_linear(profile: ShearDriftProfile,
         rhs_u = np.zeros(1)
         if (j - 1) in u_polys:
             # u_{2(j-1)} = u_{2j-2}
-            rhs_u = _poly_add(rhs_u, u_polys[j - 1])
+            rhs_u = poly_add(rhs_u, u_polys[j - 1])
         if (j - 1) in psi_polys:
             # U' * psi_{2j-1}
             up_psi = poly_multiply(b, psi_polys[j - 1])
-            rhs_u = _poly_add(rhs_u, up_psi)
+            rhs_u = poly_add(rhs_u, up_psi)
 
         # BC corrections: u'(0) + gamma_tilde_s * u_{2j-4}(0) = 0
         # Robin enters at order j >= 2 (i.e., u_4 and above)
@@ -236,11 +237,11 @@ def solve_linear(profile: ShearDriftProfile,
         if (j - 1) in psi_polys:
             psi_prev = psi_polys[j - 1]
             psi_prev_dd = poly_derivative(poly_derivative(psi_prev))
-            rhs_psi = _poly_add(rhs_psi, 2.0 * psi_prev_dd)
+            rhs_psi = poly_add(rhs_psi, 2.0 * psi_prev_dd)
 
         # -psi_{2j-3}
         if (j - 2) in psi_polys:
-            rhs_psi = _poly_add(rhs_psi, -psi_polys[j - 2])
+            rhs_psi = poly_add(rhs_psi, -psi_polys[j - 2])
 
         # -sum_{m=0}^{j} R_{2m} D' u_{2j-2m}  (separating the R_{2j} term)
         # psi_{2j+1} = psi_hat_{2j+1} - R_{2j} * psi_tilde_{2j+1}
@@ -252,7 +253,7 @@ def solve_linear(profile: ShearDriftProfile,
         for m in range(j):
             # -R_{2m} * D' * u_{2(j-m)}
             Du = poly_multiply(a, u_polys[j - m])
-            rhs_hat = _poly_add(rhs_hat, -R[m] * Du)
+            rhs_hat = poly_add(rhs_hat, -R[m] * Du)
 
         # psi_tilde: from R_{2j} * D' * u_0 = R_{2j} * D' * [1]
         # psi_tilde''''_{2j+1} = D' * u_0 = D'
@@ -321,7 +322,7 @@ def solve_linear(profile: ShearDriftProfile,
                 R_tilde[j] = 0.0
 
         # Full psi_{2j+1}
-        psi_polys[j] = _poly_add(psi_hat_polys[j], -R[j] * psi_tilde_polys[j])
+        psi_polys[j] = poly_add(psi_hat_polys[j], -R[j] * psi_tilde_polys[j])
 
     # === Compute critical wavenumber and Rayleigh number ===
     gamma = bcs.gamma
@@ -344,13 +345,17 @@ def solve_linear(profile: ShearDriftProfile,
 
     # Build neutral curve function
     def neutral_curve(l: float) -> float:
-        val = 0.0
-        for k in range(max_order):
-            val += R[k] * l ** (2 * k)
-        # Add Robin correction: gamma/l^2 terms are already in R via the tilde
-        # Actually, the expansion is R(l) = sum R_{2k} l^{2k}
-        # The Robin terms enter through the R_{2k} values themselves
-        return val
+        l_abs = abs(float(l))
+        if l_abs < 1e-15:
+            return float(np.inf)
+        l2 = l_abs * l_abs
+        regular = float(R0)
+        l2k = 1.0
+        for k in range(1, max_order):
+            l2k *= l2
+            regular += float(R_star[k]) * l2k
+        singular = gamma * float(R0) / l2
+        return singular + regular
 
     return LinearResult(
         R0=R0,
@@ -364,15 +369,6 @@ def solve_linear(profile: ShearDriftProfile,
         psi_hat_coeffs={k: v.copy() for k, v in psi_hat_polys.items()},
         psi_tilde_coeffs={k: v.copy() for k, v in psi_tilde_polys.items()},
     )
-
-
-def _poly_add(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    """Add two polynomials (coefficient arrays may differ in length)."""
-    n = max(len(a), len(b))
-    result = np.zeros(n)
-    result[:len(a)] += a
-    result[:len(b)] += b
-    return result
 
 
 def _solve_u_second_order(rhs: np.ndarray,

@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .era5 import fetch_all_observations
+from .open_meteo_client import fetch_all_observations
 from .params import LCParams
 from .profiles import get_profile
 from .robin_bc import RobinBoundaryConditions
@@ -25,7 +25,7 @@ from .timeline_analysis import (
     predict_observation_timeline,
     write_observation_timelines,
 )
-from .weather import classify_wind_regime, extract_model_forcing, summarise_context_window
+from .weather import classify_wind_regime, summarise_context_window, summarise_spinup_forcing
 
 
 # ======================================================================
@@ -139,6 +139,8 @@ def nonlinear_consistency_envelope(results_df: pd.DataFrame | None = None,
 
     for depth in depths:
         spacings_NL = []
+        spacings_CL = []
+        spacings_response = []
         spacings_L = []
         is_visible = []
         Ra_values = []
@@ -153,6 +155,8 @@ def nonlinear_consistency_envelope(results_df: pd.DataFrame | None = None,
             )
 
             spacings_NL.append(result["spacing_nonlinear"])
+            spacings_CL.append(result.get("spacing_cl", float("nan")))
+            spacings_response.append(result.get("spacing_response", float("nan")))
             spacings_L.append(result["spacing_linear"])
             is_visible.append(result["is_visible"])
             Ra_values.append(result["Ra"])
@@ -161,6 +165,8 @@ def nonlinear_consistency_envelope(results_df: pd.DataFrame | None = None,
         envelopes[depth] = {
             "wind": wind_range.tolist(),
             "spacing_NL": spacings_NL,
+            "spacing_CL": spacings_CL,
+            "spacing_response": spacings_response,
             "spacing_L": spacings_L,
             "is_visible": is_visible,
             "Ra": Ra_values,
@@ -179,10 +185,7 @@ def kappa_diagnostic(
     profile_name: str = "uniform",
     use_lake_profile: bool = False,
 ) -> dict:
-    """For each observation, compute kappa = lcL / lcNL.
-
-    kappa should be approximately constant (depends on profiles, not wind).
-    """
+    """Summarise the nonlinear amplitude coefficient diagnostic."""
     kappas = []
     obs_wind = []
     obs_ratio = []
@@ -240,6 +243,14 @@ def _r_squared(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     if ss_tot <= 0:
         return float("nan")
     return 1.0 - ss_res / ss_tot
+
+
+def filter_degraded_results(results: pd.DataFrame, prediction_col: str) -> pd.DataFrame:
+    """Exclude NaN and degraded-physics rows from metric calculations."""
+    valid = results[results[prediction_col].notna()].copy()
+    if "fallback_triggered" in valid.columns:
+        valid = valid[~valid["fallback_triggered"].fillna(False).astype(bool)]
+    return valid
 
 
 def load_observations(
@@ -344,6 +355,10 @@ def validate_nonlinear(
                     "lon": lon,
                     "observed_spacing_m": row["observed_spacing_m"],
                     "predicted_spacing_NL_m": float("nan"),
+                    "predicted_spacing_CL_m": float("nan"),
+                    "predicted_spacing_response_m": float("nan"),
+                    "predicted_spacing_visible_m": float("nan"),
+                    "predicted_spacing_observable_m": float("nan"),
                     "predicted_spacing_L_m": float("nan"),
                     "error_NL_m": float("nan"),
                     "error_L_m": float("nan"),
@@ -362,33 +377,81 @@ def validate_nonlinear(
                     "regime": "weather_error",
                     "kappa": float("nan"),
                     "selected_l": float("nan"),
+                    "selected_l_cl": float("nan"),
                     "target_l": float("nan"),
+                    "target_l_cl": float("nan"),
                     "unstable_l_min": float("nan"),
                     "unstable_l_max": float("nan"),
                     "peak_growth_proxy": float("nan"),
                     "amplitude_index": float("nan"),
                     "development_index": float("nan"),
+                    "response_bandwidth": float("nan"),
+                    "response_mix": float("nan"),
+                    "large_scale_fraction": float("nan"),
+                    "visible_fraction": float("nan"),
+                    "coarsening_index": float("nan"),
                     "is_visible": False,
                     "accumulation_factor": float("nan"),
                     "w_down_max": float("nan"),
                     "download_error": obs_weather["error"],
+                    "fallback_triggered": True,
+                    "fallback_reason": obs_weather["error"],
+                    "physics_status": "weather_error",
+                    "timeline_status": "weather_error",
                 }
             )
             continue
 
-        forcing = extract_model_forcing(obs_weather["spinup"])
+        forcing = summarise_spinup_forcing(obs_weather["spinup"])
         pre_context = summarise_context_window(obs_weather["pre_context"], "pre_context")
         post_context = summarise_context_window(obs_weather["post_context"], "post_context")
         wind_regime = classify_wind_regime(forcing, pre_context, post_context)
         U10 = float(forcing["U10_representative"])
-
-        params = LCParams(U10=U10, depth=depth, fetch=fetch)
-        pred = predict_spacing_and_visibility(
-            params,
+        timeline_df, diagnostics = predict_observation_timeline(
+            row,
+            obs_weather,
             profile_name=profile_name,
             use_lake_profile=use_lake_profile,
+            hours_before=timeline_hours_before,
+            hours_after=timeline_hours_after,
+            observation_hour_utc=observation_hour_utc,
             dynamics=dynamics,
         )
+        timeline_complete = len(timeline_df) > 0 and diagnostics.get("status") == "complete"
+        if timeline_complete:
+            spacing_nl = float(diagnostics["spacing_at_obs_m"])
+            spacing_cl = float(diagnostics.get("spacing_cl_at_obs_m", float("nan")))
+            spacing_response = float(diagnostics.get("spacing_response_at_obs_m", float("nan")))
+            spacing_l = float(diagnostics.get("spacing_linear_at_obs_m", float("nan")))
+            Ra_at_obs = float(diagnostics.get("Ra_at_obs", float("nan")))
+            kappa_at_obs = float(diagnostics.get("kappa_at_obs", float("nan")))
+            wavenumber_ratio = float(diagnostics.get("wavenumber_ratio_at_obs", float("nan")))
+            fallback_triggered = bool(diagnostics.get("fallback_at_obs", False))
+            fallback_reason = diagnostics.get("physics_status_at_obs", "") if fallback_triggered else ""
+            physics_status = diagnostics.get("physics_status_at_obs", "complete")
+            is_visible = bool(
+                timeline_df.loc[np.argmin(np.abs(timeline_df["hours_from_observation"])), "is_visible"]
+            )
+            accumulation_factor = float(
+                timeline_df.loc[np.argmin(np.abs(timeline_df["hours_from_observation"])), "accumulation_factor"]
+            )
+            w_down_max = float(
+                timeline_df.loc[np.argmin(np.abs(timeline_df["hours_from_observation"])), "w_down_max"]
+            )
+        else:
+            spacing_nl = float("nan")
+            spacing_cl = float("nan")
+            spacing_response = float("nan")
+            spacing_l = float("nan")
+            Ra_at_obs = float("nan")
+            kappa_at_obs = float("nan")
+            wavenumber_ratio = float("nan")
+            fallback_triggered = True
+            fallback_reason = diagnostics.get("reason", "timeline_incomplete")
+            physics_status = diagnostics.get("status", "timeline_incomplete")
+            is_visible = False
+            accumulation_factor = float("nan")
+            w_down_max = float("nan")
 
         result_rows.append(
             {
@@ -397,13 +460,17 @@ def validate_nonlinear(
                 "lat": lat,
                 "lon": lon,
                 "observed_spacing_m": row["observed_spacing_m"],
-                "predicted_spacing_NL_m": pred["spacing_nonlinear"],
-                "predicted_spacing_L_m": pred["spacing_linear"],
-                "error_NL_m": pred["spacing_nonlinear"] - row["observed_spacing_m"]
-                if not math.isnan(pred["spacing_nonlinear"])
+                "predicted_spacing_NL_m": spacing_nl,
+                "predicted_spacing_CL_m": spacing_cl,
+                "predicted_spacing_response_m": spacing_response,
+                "predicted_spacing_visible_m": spacing_nl,
+                "predicted_spacing_observable_m": float(diagnostics.get("spacing_observable_at_obs_m", float("nan"))),
+                "predicted_spacing_L_m": spacing_l,
+                "error_NL_m": spacing_nl - row["observed_spacing_m"]
+                if not math.isnan(spacing_nl)
                 else float("nan"),
-                "error_L_m": pred["spacing_linear"] - row["observed_spacing_m"]
-                if not math.isnan(pred["spacing_linear"])
+                "error_L_m": spacing_l - row["observed_spacing_m"]
+                if not math.isnan(spacing_l)
                 else float("nan"),
                 "depth_m": depth,
                 "fetch_m": fetch,
@@ -416,20 +483,33 @@ def validate_nonlinear(
                 "wind_dir_dominant": forcing["wind_dir_dominant"],
                 "wind_steadiness": forcing["wind_steadiness"],
                 "wind_regime": wind_regime,
-                "Ra": pred["Ra"],
-                "regime": pred["regime"],
-                "kappa": pred["kappa"],
-                "selected_l": pred.get("selected_l", float("nan")),
-                "target_l": pred.get("target_l", float("nan")),
-                "unstable_l_min": pred.get("unstable_l_min", float("nan")),
-                "unstable_l_max": pred.get("unstable_l_max", float("nan")),
-                "peak_growth_proxy": pred.get("peak_growth_proxy", float("nan")),
-                "amplitude_index": pred.get("amplitude_index", float("nan")),
-                "development_index": pred.get("development_index", float("nan")),
-                "is_visible": pred["is_visible"],
-                "accumulation_factor": pred["accumulation_factor"],
-                "w_down_max": pred["w_down_max"],
+                "Ra": Ra_at_obs,
+                "regime": diagnostics.get("regime_at_obs", "") if timeline_complete else "timeline_incomplete",
+                "hydrodynamic_regime": diagnostics.get("hydrodynamic_regime_at_obs", "") if timeline_complete else "",
+                "kappa": kappa_at_obs,
+                "wavenumber_ratio": wavenumber_ratio,
+                "selected_l": float("nan") if not timeline_complete else float(diagnostics.get("selected_l_at_obs", float("nan"))),
+                "selected_l_cl": float("nan") if not timeline_complete else float(diagnostics.get("selected_l_cl_at_obs", float("nan"))),
+                "target_l": float("nan"),
+                "target_l_cl": float("nan") if not timeline_complete else float(diagnostics.get("target_l_cl_at_obs", float("nan"))),
+                "unstable_l_min": float("nan"),
+                "unstable_l_max": float("nan"),
+                "peak_growth_proxy": float("nan"),
+                "amplitude_index": float("nan") if not timeline_complete else float(diagnostics.get("amplitude_at_obs", float("nan"))),
+                "development_index": float("nan") if not timeline_complete else float(diagnostics.get("development_at_obs", float("nan"))),
+                "response_bandwidth": float("nan") if not timeline_complete else float(diagnostics.get("response_bandwidth_at_obs", float("nan"))),
+                "response_mix": float("nan") if not timeline_complete else float(diagnostics.get("response_mix_at_obs", float("nan"))),
+                "large_scale_fraction": float("nan") if not timeline_complete else float(diagnostics.get("large_scale_fraction_at_obs", float("nan"))),
+                "visible_fraction": float("nan") if not timeline_complete else float(diagnostics.get("visible_fraction_at_obs", float("nan"))),
+                "coarsening_index": float("nan") if not timeline_complete else float(diagnostics.get("coarsening_index_at_obs", float("nan"))),
+                "is_visible": is_visible,
+                "accumulation_factor": accumulation_factor,
+                "w_down_max": w_down_max,
                 "download_error": "",
+                "fallback_triggered": fallback_triggered,
+                "fallback_reason": fallback_reason,
+                "physics_status": physics_status,
+                "timeline_status": diagnostics.get("status", "skipped"),
             }
         )
         weather_rows.append(
@@ -443,17 +523,6 @@ def validate_nonlinear(
                 "post_temp_mean": post_context["temp_mean"],
                 "wind_regime": wind_regime,
             }
-        )
-
-        timeline_df, diagnostics = predict_observation_timeline(
-            row,
-            obs_weather,
-            profile_name=profile_name,
-            use_lake_profile=use_lake_profile,
-            hours_before=timeline_hours_before,
-            hours_after=timeline_hours_after,
-            observation_hour_utc=observation_hour_utc,
-            dynamics=dynamics,
         )
         if len(timeline_df) > 0 and diagnostics.get("status") == "complete":
             obs_key = str(row.get("observation_id", f"obs_{idx:03d}"))
@@ -470,8 +539,8 @@ def validate_nonlinear(
     )
 
     # Compute metrics
-    valid_nl = results.dropna(subset=["predicted_spacing_NL_m"])
-    valid_l = results.dropna(subset=["predicted_spacing_L_m"])
+    valid_nl = filter_degraded_results(results, "predicted_spacing_NL_m")
+    valid_l = filter_degraded_results(results, "predicted_spacing_L_m")
 
     metrics = {
         "spacing_column": spacing_column,
@@ -479,6 +548,7 @@ def validate_nonlinear(
         "n_observations": int(len(results)),
         "n_valid_NL": int(len(valid_nl)),
         "n_valid_L": int(len(valid_l)),
+        "n_fallback": int(results.get("fallback_triggered", pd.Series(dtype=bool)).fillna(False).astype(bool).sum()),
     }
 
     if len(valid_nl) > 0:
@@ -520,6 +590,18 @@ def validate_nonlinear(
             metrics["timeline_spacing_vs_integrated_supercriticality_corr"] = float(
                 timeline_valid["spacing_at_obs_m"].corr(timeline_valid["integrated_supercriticality_prev_48h"])
             )
+        if "spacing_cl_at_obs_m" in timeline_valid.columns:
+            cl_valid = timeline_valid.dropna(subset=["spacing_cl_at_obs_m"])
+            if len(cl_valid) > 0:
+                cl_error = cl_valid["spacing_cl_at_obs_m"] - cl_valid["observed_spacing_m"]
+                metrics["rmse_timeline_cl_obs_m"] = float(np.sqrt(np.mean(cl_error ** 2)))
+                metrics["bias_timeline_cl_obs_m"] = float(cl_error.mean())
+        if "spacing_response_at_obs_m" in timeline_valid.columns:
+            response_valid = timeline_valid.dropna(subset=["spacing_response_at_obs_m"])
+            if len(response_valid) > 0:
+                response_error = response_valid["spacing_response_at_obs_m"] - response_valid["observed_spacing_m"]
+                metrics["rmse_timeline_response_obs_m"] = float(np.sqrt(np.mean(response_error ** 2)))
+                metrics["bias_timeline_response_obs_m"] = float(response_error.mean())
         if "coherent_run_hours_at_obs" in timeline_valid.columns:
             metrics["timeline_spacing_vs_coherent_run_corr"] = float(
                 timeline_valid["spacing_at_obs_m"].corr(timeline_valid["coherent_run_hours_at_obs"])
@@ -537,6 +619,7 @@ def validate_nonlinear(
     if nl_result is not None:
         metrics["R0"] = float(nl_result.R0)
         metrics["kappa"] = float(nl_result.kappa)
+        metrics["wavenumber_ratio"] = float(nl_result.wavenumber_ratio)
         metrics["lcNL"] = float(nl_result.lcNL)
         metrics["lcL"] = float(nl_result.linear_result.lcL)
         metrics["RcNL"] = float(nl_result.RcNL)
@@ -545,6 +628,8 @@ def validate_nonlinear(
         metrics["kappa_mean"] = float(valid_nl["kappa"].mean())
         metrics["kappa_min"] = float(valid_nl["kappa"].min())
         metrics["kappa_max"] = float(valid_nl["kappa"].max())
+        if "wavenumber_ratio" in valid_nl:
+            metrics["wavenumber_ratio_mean"] = float(valid_nl["wavenumber_ratio"].mean())
         metrics["Ra_mean"] = float(valid_nl["Ra"].mean())
         metrics["Ra_min"] = float(valid_nl["Ra"].min())
         metrics["Ra_max"] = float(valid_nl["Ra"].max())

@@ -43,8 +43,13 @@ def forcing_coherence_series(direction_deg: pd.Series) -> pd.Series:
     return coherence
 
 
-def extract_model_forcing(spinup_df: pd.DataFrame) -> dict:
-    """Summarise a 10-day spinup window into a representative 10 m wind forcing."""
+def summarise_spinup_forcing(spinup_df: pd.DataFrame) -> dict:
+    """Summarise a spinup window for diagnostics only.
+
+    The hourly CL model now consumes the full weather timeline directly. This
+    helper remains for reporting, regime classification, and backward
+    compatibility.
+    """
     ws = spinup_df["wind_speed_10m"].astype(float)
     wd = spinup_df["wind_direction_10m"].astype(float)
     hours_before = ((spinup_df.index[-1] - spinup_df.index).total_seconds() / 3600.0).to_numpy()
@@ -71,6 +76,11 @@ def extract_model_forcing(spinup_df: pd.DataFrame) -> dict:
         "wind_dir_dominant": wind_dir,
         "wind_steadiness": steadiness,
     }
+
+
+def extract_model_forcing(spinup_df: pd.DataFrame) -> dict:
+    """Backward-compatible alias for diagnostic spinup summaries."""
+    return summarise_spinup_forcing(spinup_df)
 
 
 def summarise_context_window(df: pd.DataFrame, label: str) -> dict:

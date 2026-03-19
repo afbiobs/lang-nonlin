@@ -1,0 +1,347 @@
+{
+  "counts_by_location_dataset": {
+    "manual": {
+      "China": 5,
+      "Ireland": 25,
+      "America": 9
+    },
+    "wiggle": {
+      "China": 25,
+      "Ireland": 2,
+      "America": 7
+    }
+  },
+  "development_summary": [
+    {
+      "location": "China",
+      "manual_n": 5,
+      "wiggle_n": 25,
+      "manual_mean": 0.32980345944631073,
+      "wiggle_mean": 0.34326612843669646,
+      "manual_median": 0.3274464631725737,
+      "wiggle_median": 0.3485681726463194,
+      "mean_diff_wiggle_minus_manual": 0.013462668990385729,
+      "median_diff_wiggle_minus_manual": 0.021121709473745698,
+      "cliffs_delta_wiggle_vs_manual": 0.28,
+      "cohens_d_wiggle_vs_manual": 0.3614553649734003,
+      "auc_wiggle_gt_manual": 0.64,
+      "mannwhitney_pvalue": 0.34338200229284177,
+      "ks_pvalue": 0.45422648870924737,
+      "mannwhitney_qvalue": 0.40463874310738035
+    },
+    {
+      "location": "Ireland",
+      "manual_n": 25,
+      "wiggle_n": 2,
+      "manual_mean": 0.3515378566698065,
+      "wiggle_mean": 0.324754305832223,
+      "manual_median": 0.3468636189114661,
+      "wiggle_median": 0.324754305832223,
+      "mean_diff_wiggle_minus_manual": -0.026783550837583547,
+      "median_diff_wiggle_minus_manual": -0.02210931307924313,
+      "cliffs_delta_wiggle_vs_manual": -0.38,
+      "cohens_d_wiggle_vs_manual": -0.8133680610520979,
+      "auc_wiggle_gt_manual": 0.31,
+      "mannwhitney_pvalue": 0.40463874310738035,
+      "ks_pvalue": 0.37606837606837606,
+      "mannwhitney_qvalue": 0.40463874310738035
+    },
+    {
+      "location": "America",
+      "manual_n": 9,
+      "wiggle_n": 7,
+      "manual_mean": 0.3164697671116567,
+      "wiggle_mean": 0.3258728402591718,
+      "manual_median": 0.3202479445188777,
+      "wiggle_median": 0.3250006518557541,
+      "mean_diff_wiggle_minus_manual": 0.009403073147515095,
+      "median_diff_wiggle_minus_manual": 0.004752707336876383,
+      "cliffs_delta_wiggle_vs_manual": 0.2857142857142857,
+      "cohens_d_wiggle_vs_manual": 0.4767543990209429,
+      "auc_wiggle_gt_manual": 0.6428571428571429,
+      "mannwhitney_pvalue": 0.36790863821094355,
+      "ks_pvalue": 0.4987762237762238,
+      "mannwhitney_qvalue": 0.40463874310738035
+    }
+  ],
+  "top_weather_signals_by_location": {
+    "China": [
+      {
+        "variable": "wind_steadiness_prev_48h",
+        "label": "Wind steadiness\nprevious 48 h",
+        "mean_diff_wiggle_minus_manual": -0.07861140548744605,
+        "cliffs_delta_wiggle_vs_manual": -0.456,
+        "mannwhitney_pvalue": 0.11861936819927167,
+        "mannwhitney_qvalue": 0.7948422344182267
+      },
+      {
+        "variable": "turning_mean_prev_48h_deg",
+        "label": "Mean turning\nprevious 48 h (deg/h)",
+        "mean_diff_wiggle_minus_manual": 1.0514285714285716,
+        "cliffs_delta_wiggle_vs_manual": 0.36,
+        "mannwhitney_pvalue": 0.22007882999913864,
+        "mannwhitney_qvalue": 0.7948422344182267
+      },
+      {
+        "variable": "turning_total_prev_48h_deg",
+        "label": "Total turning\nprevious 48 h (deg)",
+        "mean_diff_wiggle_minus_manual": 51.51999999999998,
+        "cliffs_delta_wiggle_vs_manual": 0.36,
+        "mannwhitney_pvalue": 0.22007882999913864,
+        "mannwhitney_qvalue": 0.7948422344182267
+      },
+      {
+        "variable": "coherence_mean_prev_48h",
+        "label": "Coherence mean\nprevious 48 h",
+        "mean_diff_wiggle_minus_manual": -0.0037879210103258787,
+        "cliffs_delta_wiggle_vs_manual": -0.328,
+        "mannwhitney_pvalue": 0.26497444571196416,
+        "mannwhitney_qvalue": 0.7948422344182267
+      },
+      {
+        "variable": "La_t_mean_prev_48h",
+        "label": "Mean turbulent\nLangmuir number",
+        "mean_diff_wiggle_minus_manual": 0.005832357583036463,
+        "cliffs_delta_wiggle_vs_manual": 0.264,
+        "mannwhitney_pvalue": 0.3725170281957161,
+        "mannwhitney_qvalue": 0.7948422344182267
+      }
+    ],
+    "Ireland": [
+      {
+        "variable": "wind_steadiness_prev_48h",
+        "label": "Wind steadiness\nprevious 48 h",
+        "mean_diff_wiggle_minus_manual": -0.2128866710226628,
+        "cliffs_delta_wiggle_vs_manual": -0.78,
+        "mannwhitney_pvalue": 0.07852202940081898,
+        "mannwhitney_qvalue": 0.8412651399168632
+      },
+      {
+        "variable": "wind_std_prev_48h",
+        "label": "Wind variability\nprevious 48 h (m/s)",
+        "mean_diff_wiggle_minus_manual": 0.4923545580693389,
+        "cliffs_delta_wiggle_vs_manual": 0.58,
+        "mannwhitney_pvalue": 0.19485630387324704,
+        "mannwhitney_qvalue": 0.8412651399168632
+      },
+      {
+        "variable": "wind_max_prev_48h",
+        "label": "Max wind\nprevious 48 h (m/s)",
+        "mean_diff_wiggle_minus_manual": 0.8103999999999996,
+        "cliffs_delta_wiggle_vs_manual": 0.34,
+        "mannwhitney_pvalue": 0.4588334243712969,
+        "mannwhitney_qvalue": 0.8412651399168632
+      },
+      {
+        "variable": "coherence_mean_prev_48h",
+        "label": "Coherence mean\nprevious 48 h",
+        "mean_diff_wiggle_minus_manual": 0.003428787352603768,
+        "cliffs_delta_wiggle_vs_manual": -0.34,
+        "mannwhitney_pvalue": 0.4588334243712969,
+        "mannwhitney_qvalue": 0.8412651399168632
+      },
+      {
+        "variable": "La_t_mean_prev_48h",
+        "label": "Mean turbulent\nLangmuir number",
+        "mean_diff_wiggle_minus_manual": 0.0036117481283076125,
+        "cliffs_delta_wiggle_vs_manual": 0.26,
+        "mannwhitney_pvalue": 0.5785001530280085,
+        "mannwhitney_qvalue": 0.8412651399168632
+      }
+    ],
+    "America": [
+      {
+        "variable": "wind_steadiness_prev_48h",
+        "label": "Wind steadiness\nprevious 48 h",
+        "mean_diff_wiggle_minus_manual": -0.17817034213519328,
+        "cliffs_delta_wiggle_vs_manual": -0.4126984126984127,
+        "mannwhitney_pvalue": 0.18546509311703674,
+        "mannwhitney_qvalue": 0.7655008916769066
+      },
+      {
+        "variable": "coherence_mean_prev_48h",
+        "label": "Coherence mean\nprevious 48 h",
+        "mean_diff_wiggle_minus_manual": -0.015728536335198884,
+        "cliffs_delta_wiggle_vs_manual": -0.25396825396825395,
+        "mannwhitney_pvalue": 0.4269226997859221,
+        "mannwhitney_qvalue": 0.7655008916769066
+      },
+      {
+        "variable": "wind_std_prev_48h",
+        "label": "Wind variability\nprevious 48 h (m/s)",
+        "mean_diff_wiggle_minus_manual": -0.18611378845225213,
+        "cliffs_delta_wiggle_vs_manual": -0.2222222222222222,
+        "mannwhitney_pvalue": 0.49111315110504294,
+        "mannwhitney_qvalue": 0.7655008916769066
+      },
+      {
+        "variable": "integrated_supercriticality_prev_48h",
+        "label": "Integrated supercriticality\nprevious 48 h",
+        "mean_diff_wiggle_minus_manual": 0.40622132324822147,
+        "cliffs_delta_wiggle_vs_manual": 0.2222222222222222,
+        "mannwhitney_pvalue": 0.49111315110504294,
+        "mannwhitney_qvalue": 0.7655008916769066
+      },
+      {
+        "variable": "wind_max_prev_48h",
+        "label": "Max wind\nprevious 48 h (m/s)",
+        "mean_diff_wiggle_minus_manual": -0.337936507936508,
+        "cliffs_delta_wiggle_vs_manual": -0.15873015873015872,
+        "mannwhitney_pvalue": 0.6335891938021503,
+        "mannwhitney_qvalue": 0.7655008916769066
+      }
+    ]
+  },
+  "regression_summary": {
+    "China": {
+      "manual:wind_mean_prev_48h": {
+        "slope": -0.005996172081873302,
+        "intercept": 0.34906854849107555,
+        "r2": 0.02970521105375179,
+        "r": -0.17235199753339614
+      },
+      "wiggle:wind_mean_prev_48h": {
+        "slope": 0.0207533559778162,
+        "intercept": 0.27808619037853227,
+        "r2": 0.20185935623810247,
+        "r": 0.44928760970908416
+      },
+      "manual:wind_std_prev_48h": {
+        "slope": -0.07575289264272324,
+        "intercept": 0.39303831908269415,
+        "r2": 0.7069845595602935,
+        "r": -0.8408237386993151
+      },
+      "wiggle:wind_std_prev_48h": {
+        "slope": 0.034143918498956025,
+        "intercept": 0.3121862992309367,
+        "r2": 0.0688586811863715,
+        "r": 0.2624093770930669
+      },
+      "manual:wind_steadiness_prev_48h": {
+        "slope": 0.06900448162412147,
+        "intercept": 0.26752294846211655,
+        "r2": 0.0845635714028038,
+        "r": 0.29079816265376196
+      },
+      "wiggle:wind_steadiness_prev_48h": {
+        "slope": 0.09439254147737959,
+        "intercept": 0.2654917645040985,
+        "r2": 0.16752335386513362,
+        "r": 0.4092961688864601
+      },
+      "manual:hours_supercritical_prev_48h": {
+        "slope": 0.0,
+        "intercept": 0.32980345944631073,
+        "r2": 0.0,
+        "r": NaN
+      },
+      "wiggle:hours_supercritical_prev_48h": {
+        "slope": 0.0,
+        "intercept": 0.34326612843669646,
+        "r2": 0.0,
+        "r": NaN
+      }
+    },
+    "Ireland": {
+      "manual:wind_mean_prev_48h": {
+        "slope": 0.01797848848908976,
+        "intercept": 0.275142195750253,
+        "r2": 0.44430833834304284,
+        "r": 0.6665645792742388
+      },
+      "wiggle:wind_mean_prev_48h": {
+        "slope": 0.020204315222919586,
+        "intercept": 0.24773463153652595,
+        "r2": 1.0,
+        "r": 1.0
+      },
+      "manual:wind_std_prev_48h": {
+        "slope": -0.014920414552214547,
+        "intercept": 0.3712992436277316,
+        "r2": 0.05023922372101042,
+        "r": -0.22414107994968435
+      },
+      "wiggle:wind_std_prev_48h": {
+        "slope": -0.06748219736412223,
+        "intercept": 0.4473564681624438,
+        "r2": 1.0,
+        "r": -1.0
+      },
+      "manual:wind_steadiness_prev_48h": {
+        "slope": 0.0857600603350916,
+        "intercept": 0.2797951456547922,
+        "r2": 0.20583584339583283,
+        "r": 0.45369135256893844
+      },
+      "wiggle:wind_steadiness_prev_48h": {
+        "slope": 0.0734096156557301,
+        "intercept": 0.2789713070992732,
+        "r2": 1.0,
+        "r": 1.0
+      },
+      "manual:hours_supercritical_prev_48h": {
+        "slope": 0.0,
+        "intercept": 0.3515378566698065,
+        "r2": 0.0,
+        "r": NaN
+      },
+      "wiggle:hours_supercritical_prev_48h": {
+        "slope": 0.0,
+        "intercept": 0.324754305832223,
+        "r2": 0.0,
+        "r": NaN
+      }
+    },
+    "America": {
+      "manual:wind_mean_prev_48h": {
+        "slope": -0.005569638618965411,
+        "intercept": 0.3383982300171831,
+        "r2": 0.07887999482584063,
+        "r": -0.28085582569325557
+      },
+      "wiggle:wind_mean_prev_48h": {
+        "slope": -0.00013650075384865097,
+        "intercept": 0.32637023627143186,
+        "r2": 0.00039582482146416353,
+        "r": -0.019895346728972904
+      },
+      "manual:wind_std_prev_48h": {
+        "slope": -0.001536616614057129,
+        "intercept": 0.31860352704001277,
+        "r2": 0.0008608051102232395,
+        "r": -0.029339480401374768
+      },
+      "wiggle:wind_std_prev_48h": {
+        "slope": 0.008129671057110602,
+        "intercept": 0.3160969483208612,
+        "r2": 0.12420887874638997,
+        "r": 0.35243280032708524
+      },
+      "manual:wind_steadiness_prev_48h": {
+        "slope": -0.01667163726871724,
+        "intercept": 0.3277164917204303,
+        "r2": 0.018733637645389933,
+        "r": -0.1368708794645171
+      },
+      "wiggle:wind_steadiness_prev_48h": {
+        "slope": -0.012095087054937477,
+        "intercept": 0.3318772278341187,
+        "r2": 0.09575659546440918,
+        "r": -0.309445626022422
+      },
+      "manual:hours_supercritical_prev_48h": {
+        "slope": 0.0,
+        "intercept": 0.3164697671116567,
+        "r2": 0.0,
+        "r": NaN
+      },
+      "wiggle:hours_supercritical_prev_48h": {
+        "slope": 0.003118521708860513,
+        "intercept": 0.1735107796262723,
+        "r2": 0.015646490852181172,
+        "r": 0.12508593387020447
+      }
+    }
+  }
+}

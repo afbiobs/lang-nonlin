@@ -1,0 +1,80 @@
+{
+  "manual": {
+    "source_dir": "/home/op/PROJECTS/lang-nonlin/outputs/2026-03-19_manual_validation_timeline_v5",
+    "n_observations": 39,
+    "median_observed_spacing_m": 52.64559171,
+    "median_visible_spacing_m": 103.5792262052619,
+    "median_cl_spacing_m": 20.254134343672305,
+    "median_response_spacing_m": 126.67418565000008,
+    "median_linear_spacing_m": 45.17185180495705,
+    "component_skill": {
+      "Visible": {
+        "dataset": "manual",
+        "rmse": 63.16602853309363,
+        "bias": 32.72807861204182,
+        "capture_rate": 0.48717948717948717,
+        "median_ratio": 0.5043122940872223
+      },
+      "CL": {
+        "dataset": "manual",
+        "rmse": 73.71006359721312,
+        "bias": -50.27314260031478,
+        "capture_rate": 0.15384615384615385,
+        "median_ratio": 2.5903977502132167
+      },
+      "Response": {
+        "dataset": "manual",
+        "rmse": 77.43260107101054,
+        "bias": 55.695370416574164,
+        "capture_rate": 0.358974358974359,
+        "median_ratio": 0.41929922743487685
+      },
+      "Linear": {
+        "dataset": "manual",
+        "rmse": 59.63212669227902,
+        "bias": -25.68187381050688,
+        "capture_rate": 0.8717948717948718,
+        "median_ratio": 1.171103066436265
+      }
+    }
+  },
+  "wiggle": {
+    "source_dir": "/home/op/PROJECTS/lang-nonlin/outputs/2026-03-19_wiggle_validation_timeline_v5",
+    "n_observations": 34,
+    "median_observed_spacing_m": 126.060378,
+    "median_visible_spacing_m": 103.36005260996777,
+    "median_cl_spacing_m": 20.270418233186014,
+    "median_response_spacing_m": 126.19715826746497,
+    "median_linear_spacing_m": 45.07675010572585,
+    "component_skill": {
+      "Visible": {
+        "dataset": "wiggle",
+        "rmse": 123.31912071526013,
+        "bias": -61.82916788233251,
+        "capture_rate": 0.7941176470588235,
+        "median_ratio": 1.2268596015308373
+      },
+      "CL": {
+        "dataset": "wiggle",
+        "rmse": 179.07821548581504,
+        "bias": -143.8527477509639,
+        "capture_rate": 0.029411764705882353,
+        "median_ratio": 6.146406393013006
+      },
+      "Response": {
+        "dataset": "wiggle",
+        "rmse": 113.13095036287999,
+        "bias": -38.65841691738732,
+        "capture_rate": 0.7647058823529411,
+        "median_ratio": 0.9975264334631883
+      },
+      "Linear": {
+        "dataset": "wiggle",
+        "rmse": 160.27828077006723,
+        "bias": -119.84588375498838,
+        "capture_rate": 0.17647058823529413,
+        "median_ratio": 2.7920989083435326
+      }
+    }
+  }
+}

@@ -119,26 +119,13 @@ def evaluate_manual_config(
 def sample_dynamics_config(rng: np.random.Generator) -> LangmuirDynamicsConfig:
     """Sample a plausible duration-aware dynamics configuration."""
     return LangmuirDynamicsConfig(
-        relaxation_hours=float(rng.uniform(6.0, 24.0)),
-        decay_hours=float(rng.uniform(10.0, 40.0)),
-        coherent_u_star_threshold=float(rng.uniform(0.0015, 0.0045)),
-        coherent_u_star_scale=float(rng.uniform(6.0e-4, 3.0e-3)),
-        coherent_coherence_threshold=float(rng.uniform(0.35, 0.9)),
-        coherent_decay_hours=float(rng.uniform(3.0, 24.0)),
-        coherent_hours_cap=float(rng.uniform(24.0, 120.0)),
-        setup_hours_scale=float(rng.uniform(2.0, 18.0)),
-        setup_supercriticality_scale=float(rng.uniform(0.05, 1.0)),
-        onset_mode_blend_power=float(rng.uniform(0.6, 2.5)),
-        recovery_gate_floor=float(rng.uniform(0.05, 0.45)),
-        expression_near_onset_setup=float(rng.uniform(0.1, 0.7)),
-        expression_near_onset_hours=float(rng.uniform(1.0, 18.0)),
-        merge_amplitude_threshold=float(rng.uniform(0.2, 0.8)),
-        merge_setup_threshold=float(rng.uniform(0.35, 0.9)),
-        merge_min_age_hours=float(rng.uniform(1.0, 12.0)),
-        merge_timescale_hours=float(rng.uniform(2.0, 18.0)),
-        merge_coherent_hours_threshold=float(rng.uniform(4.0, 36.0)),
-        merge_u_star_threshold=float(rng.uniform(0.002, 0.006)),
+        tau_relax_alpha=float(rng.uniform(0.03, 0.18)),
+        tau_decay_alpha=float(rng.uniform(0.05, 0.30)),
+        tau_coherence_alpha=float(rng.uniform(0.02, 0.15)),
+        merge_min_age_alpha=float(rng.uniform(0.01, 0.10)),
+        merge_supercriticality_threshold=float(rng.uniform(0.05, 0.6)),
         merge_step_factor=float(rng.uniform(0.72, 0.96)),
+        coherence_threshold=float(rng.uniform(0.35, 0.9)),
     )
 
 

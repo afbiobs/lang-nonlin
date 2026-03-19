@@ -6,17 +6,17 @@ Hayes & Phillips (2017) equation (7).
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 from numpy.polynomial import Polynomial
+from scipy.optimize import nnls
+
 from .utils import poly_eval
 
 
 class ShearDriftProfile:
-    """Polynomial representation of U'(z) and D'(z).
-
-    D' = sum_{m=0}^{M} a_m z^m
-    U' = sum_{n=0}^{N} b_n z^n
-    """
+    """Polynomial representation of U'(z) and D'(z)."""
 
     def __init__(self, a_coeffs: np.ndarray, b_coeffs: np.ndarray, name: str = "custom"):
         self.a = np.array(a_coeffs, dtype=float)
@@ -32,7 +32,6 @@ class ShearDriftProfile:
         return poly_eval(self.b, z)
 
     def check_instability_condition(self, n_pts: int = 100) -> bool:
-        """Check D'U' > 0 over [-1, 0] (Leibovich 1983 requirement)."""
         z = np.linspace(-1, 0, n_pts)
         product = self.D_prime(z) * self.U_prime(z)
         return bool(np.all(product >= -1e-10))
@@ -41,65 +40,76 @@ class ShearDriftProfile:
         return f"ShearDriftProfile(name='{self.name}', a={self.a.tolist()}, b={self.b.tolist()})"
 
 
-# Predefined profiles from the paper
 PROFILES = {
-    "uniform": ShearDriftProfile(
-        a_coeffs=[1.0], b_coeffs=[1.0], name="uniform"
-    ),
-    "linear_drift": ShearDriftProfile(
-        a_coeffs=[1.0, 1.0], b_coeffs=[1.0], name="linear_drift"
-    ),
-    "linear_shear": ShearDriftProfile(
-        a_coeffs=[1.0], b_coeffs=[1.0, 1.0], name="linear_shear"
-    ),
-    "both_linear": ShearDriftProfile(
-        a_coeffs=[1.0, 1.0], b_coeffs=[1.0, 1.0], name="both_linear"
-    ),
+    "uniform": ShearDriftProfile(a_coeffs=[1.0], b_coeffs=[1.0], name="uniform"),
+    "linear_drift": ShearDriftProfile(a_coeffs=[1.0, 1.0], b_coeffs=[1.0], name="linear_drift"),
+    "linear_shear": ShearDriftProfile(a_coeffs=[1.0], b_coeffs=[1.0, 1.0], name="linear_shear"),
+    "both_linear": ShearDriftProfile(a_coeffs=[1.0, 1.0], b_coeffs=[1.0, 1.0], name="both_linear"),
 }
 
 
 def get_profile(name: str) -> ShearDriftProfile:
-    """Get a predefined profile by name."""
     if name not in PROFILES:
         raise ValueError(f"Unknown profile '{name}'. Available: {list(PROFILES.keys())}")
     return PROFILES[name]
 
 
+def _integrate_trapezoid(values: np.ndarray, z: np.ndarray) -> float:
+    integrator = np.trapezoid if hasattr(np, "trapezoid") else np.trapz
+    return float(integrator(values, z))
+
+
+def _fit_positive_profile(z: np.ndarray, values: np.ndarray, *, degree: int) -> np.ndarray:
+    safe = np.asarray(values, dtype=float)
+    safe = np.maximum(safe, 1.0e-8)
+    safe = safe / max(_integrate_trapezoid(safe, z), 1.0e-8)
+
+    x = np.clip(np.asarray(z, dtype=float) + 1.0, 0.0, 1.0)
+    basis = np.column_stack(
+        [
+            math.comb(degree, k) * (x ** k) * ((1.0 - x) ** (degree - k))
+            for k in range(degree + 1)
+        ]
+    )
+    bernstein_coeffs, _ = nnls(basis, safe)
+
+    x_poly = Polynomial([1.0, 1.0])      # x = z + 1
+    one_minus_x_poly = Polynomial([0.0, -1.0])  # 1 - x = -z
+    poly = Polynomial([0.0])
+    for k, coeff in enumerate(bernstein_coeffs):
+        poly = poly + coeff * math.comb(degree, k) * (x_poly ** k) * (one_minus_x_poly ** (degree - k))
+
+    coeffs = np.asarray(poly.coef, dtype=float)
+    scale = max(_integrate_trapezoid(poly(z), z), 1.0e-8)
+    return coeffs / scale
+
+
 def shallow_lake_profile(params) -> ShearDriftProfile:
-    """Compute realistic U'(z) and D'(z) for a wind-driven shallow lake.
+    """Fit physical shear and drift-gradient profiles into low-order polynomials."""
+    hydro = params.hydrodynamic_state
+    z = np.asarray(hydro.z_nondim, dtype=float)
 
-    The raw shear and Stokes-drift derivatives are highly surface intensified.
-    A direct low-degree polynomial fit can introduce sign changes in D'U',
-    which makes the CL solver unphysical for many observations. Instead we
-    build positive polynomial shape functions on x = z + 1 in [0, 1] and let
-    their skewness vary with the current forcing state.
-    """
-    x = Polynomial([1.0, 1.0])  # x = z + 1 maps [-1, 0] -> [0, 1]
+    current = np.asarray(hydro.current_velocity, dtype=float)
+    stokes = np.asarray(hydro.stokes_drift, dtype=float)
 
-    # Broad physical controls for how surface-trapped the profiles are.
-    wave_depth_ratio = params.depth / max(params.lambda_p, 1e-6)
-    wave_depth_ratio = min(max(wave_depth_ratio, 0.0), 1.0)
-    langmuir_intensity = (1.2 - min(params.La_t, 1.2)) / 1.2
-    langmuir_intensity = min(max(langmuir_intensity, 0.0), 1.0)
+    # The CL theory uses U'(z) and D'(z), not the velocities themselves.
+    # The previous implementation fit the velocity profiles directly, which
+    # forced the return flow into U' and broke the D'U' >= 0 instability
+    # requirement. Use monotone vertical gradients instead.
+    current_shear = np.gradient(current, z)
+    drift_gradient = np.gradient(stokes, z)
 
-    # Keep some support through the full depth to avoid pathological onset
-    # thresholds while still sharpening the profile near the surface when
-    # waves are short or Langmuir forcing is intense.
-    shear_floor = 0.15
-    drift_floor = 0.08
-    shear_skew = min(max(0.25 + 0.5 * langmuir_intensity, 0.0), 1.0)
-    drift_skew = min(max(0.2 + 0.6 * wave_depth_ratio, 0.0), 1.0)
+    current_shape = np.maximum(current_shear, 1.0e-6)
+    drift_shape = np.maximum(drift_gradient, 1.0e-6)
 
-    shear_shape = Polynomial([shear_floor]) + (1.0 - shear_floor) * (
-        (1.0 - shear_skew) * x + shear_skew * (x ** 3)
-    )
-    drift_shape = Polynomial([drift_floor]) + (1.0 - drift_floor) * (
-        (1.0 - drift_skew) * (x ** 2) + drift_skew * (x ** 4)
-    )
+    b_coeffs = _fit_positive_profile(z, current_shape, degree=5)
+    a_coeffs = _fit_positive_profile(z, drift_shape, degree=5)
 
     profile = ShearDriftProfile(
-        a_coeffs=np.asarray(drift_shape.coef, dtype=float),
-        b_coeffs=np.asarray(shear_shape.coef, dtype=float),
+        a_coeffs=a_coeffs,
+        b_coeffs=b_coeffs,
         name="shallow_lake",
     )
+    if not profile.check_instability_condition():
+        raise ValueError("Fitted shallow-lake profile violates D'U' >= 0.")
     return profile

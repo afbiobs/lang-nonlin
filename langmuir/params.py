@@ -5,36 +5,200 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
+import numpy as np
+from scipy.optimize import brentq
+from scipy.special import exp1
+
+
+@dataclass(frozen=True)
+class HydrodynamicState:
+    """Resolved near-surface forcing state used by the CL parameterisation."""
+
+    drag_coefficient: float
+    tau: float
+    u_star: float
+    U_surface: float
+    D_surface: float
+    D_max: float
+    nu_shear: float
+    nu_T: float
+    H_s: float
+    T_p: float
+    lambda_p: float
+    La_t: float
+    La_SL: float
+    pressure_gradient: float
+    z_physical_m: np.ndarray
+    z_nondim: np.ndarray
+    nu_T_profile: np.ndarray
+    current_velocity: np.ndarray
+    stokes_drift: np.ndarray
+    lagrangian_velocity: np.ndarray
+    current_shear: np.ndarray
+    stokes_gradient: np.ndarray
+    lagrangian_shear: np.ndarray
+
+
+def _integrate_profile(values: np.ndarray, z: np.ndarray) -> float:
+    integrator = np.trapezoid if hasattr(np, "trapezoid") else np.trapz
+    return float(integrator(values, z))
+
+
+def _wuest_lorke_drag(U10: float) -> float:
+    return max(0.0044 * U10 ** (-1.15), 5.0e-4)
+
+
+def _charnock_drag(U10: float, *, kappa_vk: float, g: float, K: float = 11.3) -> float:
+    Cd = max(_wuest_lorke_drag(max(U10, 0.1)), 8.0e-4)
+    for _ in range(32):
+        u_star = math.sqrt(Cd) * U10
+        z0 = max(u_star * u_star / max(g * K, 1e-12), 1.0e-6)
+        Cd_new = (kappa_vk / max(math.log(10.0 / z0), 1.0)) ** 2
+        if abs(Cd_new - Cd) < 1e-8:
+            return float(Cd_new)
+        Cd = 0.5 * (Cd + Cd_new)
+    return float(Cd)
+
+
+def _continuous_drag_coefficient(U10: float, *, kappa_vk: float, g: float) -> float:
+    low_wind = _wuest_lorke_drag(U10)
+    high_wind = _charnock_drag(U10, kappa_vk=kappa_vk, g=g)
+    blend = 0.5 * (1.0 + math.tanh((U10 - 5.0) / 0.75))
+    return float((1.0 - blend) * low_wind + blend * high_wind)
+
+
+def _fetch_limited_wave_state(U10: float, fetch: float, depth: float, g: float) -> tuple[float, float, float]:
+    x_hat = max(g * fetch / max(U10 * U10, 1e-12), 1.0)
+    f_p = 3.5 * (g / U10) * x_hat ** (-0.33)
+    T_p = 1.0 / max(f_p, 1e-12)
+    H_s = 0.0016 * (U10 * U10 / g) * x_hat ** 0.5
+    omega_p = 2.0 * math.pi * f_p
+    k_p = omega_p * omega_p / g
+    if depth < g * T_p * T_p / (4.0 * math.pi):
+        def dispersion_relation(k: float) -> float:
+            return g * k * math.tanh(k * depth) - omega_p * omega_p
+
+        k_upper = max(50.0 / max(depth, 0.1), 20.0 * k_p, 1.0)
+        while dispersion_relation(k_upper) < 0.0:
+            k_upper *= 2.0
+        k_p = brentq(dispersion_relation, 1.0e-8, k_upper)
+    lambda_p = 2.0 * math.pi / max(k_p, 1.0e-12)
+    return float(H_s), float(T_p), float(lambda_p)
+
+
+def _broadband_stokes_profile(
+    *,
+    depth: float,
+    H_s: float,
+    T_p: float,
+    lambda_p: float,
+    fetch: float,
+    U10: float,
+    n_levels: int = 65,
+) -> tuple[float, np.ndarray, np.ndarray]:
+    omega_p = 2.0 * math.pi / max(T_p, 1.0e-12)
+    k_p = 2.0 * math.pi / max(lambda_p, 1.0e-12)
+    a = 0.5 * H_s
+    monochromatic_surface = omega_p * k_p * a * a
+
+    x_hat = max(9.81 * fetch / max(U10 * U10, 1.0e-12), 1.0)
+    spectral_factor = 1.0 + 0.35 * math.tanh(math.log10(x_hat))
+    D_surface = max(monochromatic_surface * spectral_factor, 1.0e-8)
+
+    z_physical = np.linspace(-depth, 0.0, n_levels)
+    z_nondim = z_physical / max(depth, 1.0e-12)
+    attenuation = np.maximum(2.0 * k_p * np.abs(z_physical), 1.0e-6)
+    profile = exp1(attenuation) / exp1(1.0e-6)
+    profile[-1] = 1.0
+    stokes = D_surface * np.clip(profile, 0.0, 1.0)
+    return float(D_surface), z_physical, z_nondim, stokes
+
+
+def _eddy_viscosity_profile(
+    *,
+    depth: float,
+    nu_T: float,
+    La_SL: float,
+    n_levels: int = 65,
+) -> tuple[np.ndarray, np.ndarray]:
+    z = np.linspace(-depth, 0.0, n_levels)
+    sigma = np.clip((z + depth) / max(depth, 1.0e-12), 0.0, 1.0)
+    surface_weight = np.exp(z / max(0.22 * depth, 1.0e-6))
+    interior_shape = 0.65 + 0.55 * 4.0 * sigma * (1.0 - sigma)
+    langmuir_surface = 1.0 + 0.35 / max(La_SL * La_SL, 1.0e-12) * surface_weight
+    profile = np.clip(interior_shape * langmuir_surface, 0.15, None)
+    mean_profile = _integrate_profile(profile, z) / max(depth, 1.0e-12)
+    profile *= nu_T / max(mean_profile, 1.0e-12)
+    return z, profile
+
+
+def _solve_surface_current_profile(
+    *,
+    depth: float,
+    tau: float,
+    rho_w: float,
+    nu_T: float | np.ndarray,
+    n_levels: int = 65,
+) -> tuple[np.ndarray, np.ndarray, float]:
+    z = np.linspace(-depth, 0.0, n_levels)
+    dz = float(z[1] - z[0])
+    n = len(z)
+    if np.isscalar(nu_T):
+        nu_profile = np.full(n, float(nu_T), dtype=float)
+    else:
+        nu_profile = np.asarray(nu_T, dtype=float)
+        if len(nu_profile) != n:
+            raise ValueError("nu_T profile must match the vertical grid length.")
+    mat = np.zeros((n + 1, n + 1), dtype=float)
+    rhs = np.zeros(n + 1, dtype=float)
+
+    for idx in range(1, n - 1):
+        nu_down = 0.5 * (nu_profile[idx - 1] + nu_profile[idx])
+        nu_up = 0.5 * (nu_profile[idx] + nu_profile[idx + 1])
+        mat[idx, idx - 1] = nu_down / dz ** 2
+        mat[idx, idx] = -(nu_down + nu_up) / dz ** 2
+        mat[idx, idx + 1] = nu_up / dz ** 2
+        mat[idx, -1] = -1.0
+
+    mat[0, 0] = 1.0
+    nu_surface = 0.5 * (nu_profile[-2] + nu_profile[-1])
+    mat[n - 1, n - 2] = -nu_surface / dz
+    mat[n - 1, n - 1] = nu_surface / dz
+    rhs[n - 1] = tau / rho_w
+
+    trap_weights = np.ones(n, dtype=float)
+    trap_weights[0] = 0.5
+    trap_weights[-1] = 0.5
+    mat[n, :n] = trap_weights * dz
+
+    solution = np.linalg.solve(mat, rhs)
+    return z, solution[:n], float(solution[-1])
+
 
 @dataclass
 class LCParams:
     """All parameters needed to specify a shallow-lake LC problem."""
 
-    # --- Environmental forcing (dimensional) ---
-    U10: float              # 10-m wind speed (m/s)
-    depth: float = 9.0      # Water depth h (m)
-    fetch: float = 15000.0  # Wind fetch (m)
+    U10: float
+    depth: float = 9.0
+    fetch: float = 15000.0
 
-    # --- Boundary condition parameters ---
-    gamma_s: float = 0.06   # Surface Robin parameter (Cox & Leibovich 1993)
-    gamma_b: float = 0.28   # Bottom Robin parameter (rigid bottom)
+    gamma_s: float = 0.06
+    gamma_b: float = 0.28
 
-    # --- Shear/drift profile specification ---
     shear_type: str = "wind_driven"
     drift_type: str = "fetch_limited"
 
-    # --- Colony properties (for secondary biological coupling) ---
-    v_float: float = 1e-4       # Colony rise velocity (m/s)
-    colony_radius: float = 250e-6  # Colony radius (m)
-    rho_colony: float = 990.0   # Colony density (kg/m^3)
+    v_float: float = 1e-4
+    colony_radius: float = 250e-6
+    rho_colony: float = 990.0
 
-    # --- Physical constants ---
     g: float = 9.81
     rho_w: float = 998.2
     rho_air: float = 1.225
-    kappa_vk: float = 0.41  # von Karman constant
+    kappa_vk: float = 0.41
 
-    # --- Derived quantities (computed in __post_init__) ---
+    hydrodynamic_state: HydrodynamicState = field(init=False)
     u_star: float = field(init=False)
     U_surface: float = field(init=False)
     D_max: float = field(init=False)
@@ -44,69 +208,92 @@ class LCParams:
     T_p: float = field(init=False)
     lambda_p: float = field(init=False)
     La_t: float = field(init=False)
+    La_SL: float = field(init=False)
 
     def __post_init__(self) -> None:
         self._compute_derived()
 
     def _compute_derived(self) -> None:
         g = self.g
-        U10 = max(self.U10, 0.01)
-        depth = self.depth
-        fetch = self.fetch
+        U10 = max(float(self.U10), 0.05)
+        depth = max(float(self.depth), 0.25)
+        fetch = max(float(self.fetch), 1.0)
 
-        # 1. Friction velocity with Charnock-like drag
-        if U10 < 5.0:
-            C_d = 1.0e-3
-        else:
-            C_d = (0.8 + 0.065 * U10) * 1e-3
-        tau = self.rho_air * C_d * U10**2
-        self.u_star = math.sqrt(tau / self.rho_w)
+        drag_coefficient = _continuous_drag_coefficient(U10, kappa_vk=self.kappa_vk, g=g)
+        tau = self.rho_air * drag_coefficient * U10 * U10
+        u_star = math.sqrt(tau / self.rho_w)
 
-        # 2. Surface velocity (3% rule for wind-driven surface currents)
-        self.U_surface = 0.03 * U10
+        H_s, T_p, lambda_p = _fetch_limited_wave_state(U10, fetch, depth, g)
+        D_surface, z_physical, z_nondim, stokes_drift = _broadband_stokes_profile(
+            depth=depth,
+            H_s=H_s,
+            T_p=T_p,
+            lambda_p=lambda_p,
+            fetch=fetch,
+            U10=U10,
+        )
 
-        # 3. Fetch-limited wave parameters (JONSWAP parameterisation)
-        x_hat = max(g * fetch / max(U10**2, 1e-12), 1.0)
-        f_p = 3.5 * (g / U10) * x_hat**(-0.33)
-        self.T_p = 1.0 / f_p
-        self.H_s = 0.0016 * (U10**2 / g) * x_hat**0.5
+        nu_shear = self.kappa_vk * u_star * depth / 6.0
+        La_SL = math.sqrt(max(u_star, 1.0e-12) / max(D_surface, 1.0e-12))
+        nu_T = nu_shear * math.sqrt(1.0 + 0.49 / max(La_SL * La_SL, 1.0e-12))
+        _, nu_T_profile = _eddy_viscosity_profile(
+            depth=depth,
+            nu_T=nu_T,
+            La_SL=La_SL,
+            n_levels=len(z_physical),
+        )
 
-        # Peak wavelength (deep-water dispersion)
-        self.lambda_p = g * self.T_p**2 / (2.0 * math.pi)
+        current_z, current_velocity, pressure_gradient = _solve_surface_current_profile(
+            depth=depth,
+            tau=tau,
+            rho_w=self.rho_w,
+            nu_T=nu_T_profile,
+            n_levels=len(z_physical),
+        )
+        U_surface = float(current_velocity[-1])
+        current_shear = np.gradient(current_velocity, current_z)
+        stokes_gradient = np.gradient(stokes_drift, z_physical)
+        lagrangian_velocity = current_velocity + stokes_drift
+        lagrangian_shear = current_shear + stokes_gradient
 
-        # Stokes drift at surface for fetch-limited waves
-        omega_p = 2.0 * math.pi * f_p
-        k_p = omega_p**2 / g  # deep-water approximation
-        # Shallow-water correction
-        if depth < self.lambda_p / 2.0:
-            from scipy.optimize import brentq
+        La_t = math.sqrt(max(u_star, 1.0e-12) / max(D_surface, 1.0e-12))
+        Ra = U_surface * D_surface * depth * depth / max(nu_T * nu_T, 1.0e-30)
 
-            def disp(k):
-                return g * k * math.tanh(k * depth) - omega_p**2
-
-            k_upper = max(50.0 / max(depth, 0.1), k_p * 20.0, 1.0)
-            while disp(k_upper) < 0:
-                k_upper *= 2.0
-            k_p = brentq(disp, 1e-8, k_upper)
-
-        a = self.H_s / 2.0
-        kh = k_p * depth
-        # Stable form of cosh(2kh) / (2 sinh(kh)^2) = 1 + 1 / (2 sinh(kh)^2).
-        if abs(kh) < 20.0:
-            sinh_kh = math.sinh(kh)
-            drift_factor = 1.0 + 1.0 / max(2.0 * sinh_kh**2, 1e-12)
-        else:
-            drift_factor = 1.0
-        self.D_max = (omega_p * k_p * a**2) * drift_factor
-
-        # 4. Eddy viscosity (depth-averaged parabolic profile)
-        self.nu_T = self.kappa_vk * self.u_star * depth / 6.0
-
-        # 5. Rayleigh number
-        self.Ra = self.U_surface * self.D_max * depth**2 / max(self.nu_T**2, 1e-30)
-
-        # Turbulent Langmuir number
-        self.La_t = math.sqrt(self.u_star / max(self.D_max, 1e-12))
+        self.hydrodynamic_state = HydrodynamicState(
+            drag_coefficient=float(drag_coefficient),
+            tau=float(tau),
+            u_star=float(u_star),
+            U_surface=float(U_surface),
+            D_surface=float(D_surface),
+            D_max=float(D_surface),
+            nu_shear=float(nu_shear),
+            nu_T=float(nu_T),
+            H_s=float(H_s),
+            T_p=float(T_p),
+            lambda_p=float(lambda_p),
+            La_t=float(La_t),
+            La_SL=float(La_SL),
+            pressure_gradient=float(pressure_gradient),
+            z_physical_m=np.asarray(current_z, dtype=float),
+            z_nondim=np.asarray(z_nondim, dtype=float),
+            nu_T_profile=np.asarray(nu_T_profile, dtype=float),
+            current_velocity=np.asarray(current_velocity, dtype=float),
+            stokes_drift=np.asarray(stokes_drift, dtype=float),
+            lagrangian_velocity=np.asarray(lagrangian_velocity, dtype=float),
+            current_shear=np.asarray(current_shear, dtype=float),
+            stokes_gradient=np.asarray(stokes_gradient, dtype=float),
+            lagrangian_shear=np.asarray(lagrangian_shear, dtype=float),
+        )
+        self.u_star = self.hydrodynamic_state.u_star
+        self.U_surface = self.hydrodynamic_state.U_surface
+        self.D_max = self.hydrodynamic_state.D_max
+        self.nu_T = self.hydrodynamic_state.nu_T
+        self.Ra = float(Ra)
+        self.H_s = self.hydrodynamic_state.H_s
+        self.T_p = self.hydrodynamic_state.T_p
+        self.lambda_p = self.hydrodynamic_state.lambda_p
+        self.La_t = self.hydrodynamic_state.La_t
+        self.La_SL = self.hydrodynamic_state.La_SL
 
     @property
     def gamma(self) -> float:
