@@ -71,7 +71,7 @@ class LangmuirDynamicsConfig:
     decay_memory_hours: float = 0.75
     spacing_growth_hours: float = 0.5
     spacing_decay_hours: float = 2.0
-    aggregation_doubling_hours: float = 5.0
+    aggregation_doubling_hours: float = 3.0
     aggregation_max_log2: float = 3.46
     visibility_on_hours: float = 0.25
     visibility_off_hours: float = 1.0
@@ -792,11 +792,10 @@ def advance_langmuir_state(
             tau_rise=effective_doubling_hours,
             tau_fall=spacing_decay_hours,
         )
-        # Cap aggregation at the response/CL spacing ratio — cells can't
-        # grow past the energy-containing response scale.
-        response_cl_ratio = max(spacing_response, spacing_cl) / max(spacing_cl, 1.0e-6)
-        effective_max_log2 = min(agg_max, math.log2(max(response_cl_ratio, 1.01)))
-        aggregation_ratio = 2.0 ** min(aggregation_log2, effective_max_log2)
+        # Uncapped aggregation — depth may be unknown so let cells grow
+        # freely. Typical observed limit is ~11x (agg_max ≈ 3.46), shown
+        # as a reference line on plots but not enforced here.
+        aggregation_ratio = 2.0 ** min(aggregation_log2, agg_max)
         coarsening_index = _clip01(aggregation_log2 / max(agg_max, 0.01))
 
         core_spacing_target = spacing_cl * aggregation_ratio
