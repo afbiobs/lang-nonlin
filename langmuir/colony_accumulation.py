@@ -47,6 +47,7 @@ class LangmuirModeState:
     event_age_hours: float = 0.0
     decay_age_hours: float = 0.0
     response_separation: float = 0.0
+    forcing_intensity: float = 0.0
     buoyancy_Q: float = 0.15
     rho_cell: float = 990.0
     v_float: float = 1.0e-4
@@ -81,6 +82,12 @@ DEFAULT_DYNAMICS = LangmuirDynamicsConfig()
 
 def _clip01(value: float) -> float:
     return float(min(max(value, 0.0), 1.0))
+
+
+def _soft_saturate(value: float, *, scale: float = 1.0) -> float:
+    """Map [0, inf) -> [0, 1) with continuous sensitivity."""
+    v = max(float(value), 0.0) / max(scale, 1.0e-6)
+    return float(v / (1.0 + v))
 
 
 def _relax_towards(current: float, target: float, *, dt_hours: float, tau_hours: float) -> float:
@@ -593,6 +600,13 @@ def advance_langmuir_state(
         response_mix = float(previous_state.response_mix * math.exp(-dt_eff / max(decay_hours_eff, 1.0e-6)))
         large_scale_fraction = float(previous_state.large_scale_fraction * math.exp(-dt_eff / max(decay_hours_eff, 1.0e-6)))
         response_separation = float(previous_state.response_separation * math.exp(-dt_eff / max(spacing_decay_hours, 1.0e-6)))
+        forcing_intensity = _evolve_state_variable(
+            previous_state.forcing_intensity,
+            0.0,
+            dt_hours=dt_eff,
+            tau_rise=fast_memory_hours,
+            tau_fall=slow_memory_hours,
+        )
         development_index = visible_fraction * (0.20 + 0.80 * max(coarsening_index, drive_slow))
         spacing_cl = prev_cl_spacing
         spacing_response = prev_response_spacing
@@ -605,8 +619,8 @@ def advance_langmuir_state(
             tau_fall=spacing_decay_hours,
         )
         selected_l = _l_from_spacing(spacing_core, params.depth)
-        spacing_visible = visible_fraction * spacing_core
-        spacing_observable = spacing_visible
+        spacing_visible = float("nan")
+        spacing_observable = float("nan")
         spacing_nl = spacing_core
         mode_state = LangmuirModeState(
             selected_l=float(selected_l),
@@ -633,6 +647,7 @@ def advance_langmuir_state(
             event_age_hours=float(event_age_hours),
             decay_age_hours=float(decay_age_hours),
             response_separation=float(response_separation),
+            forcing_intensity=float(forcing_intensity),
             buoyancy_Q=buoyancy_Q,
             rho_cell=rho_cell,
             v_float=v_float,
@@ -646,7 +661,8 @@ def advance_langmuir_state(
         if coherence > dynamics.coherence_threshold:
             coherence_drive = (coherence - dynamics.coherence_threshold) / max(1.0 - dynamics.coherence_threshold, 1.0e-6)
         supercritical_drive = supercriticality / (0.15 + supercriticality)
-        event_drive = _clip01((0.20 + 0.80 * wind_drive) * coherence_drive * supercritical_drive)
+        raw_event_drive = (0.20 + 0.80 * wind_drive) * coherence_drive * supercritical_drive
+        event_drive = _soft_saturate(raw_event_drive, scale=0.5)
         event_active = event_drive > 0.02
         drive_fast = _evolve_state_variable(
             previous_state.drive_fast,
@@ -707,6 +723,15 @@ def advance_langmuir_state(
                     selected_l_cl = max(selected_l_cl * dynamics.merge_step_factor, subharmonic_l)
                     cl_merging_age_hours = 0.0
 
+        S_wind = hydro.S_wind
+        forcing_intensity = _evolve_state_variable(
+            previous_state.forcing_intensity,
+            math.log1p(S_wind),
+            dt_hours=dt_eff,
+            tau_rise=fast_memory_hours,
+            tau_fall=slow_memory_hours,
+        )
+
         hybrid = build_hybrid_spacing_spectrum(
             params=params,
             nl_result=nl_result,
@@ -715,6 +740,7 @@ def advance_langmuir_state(
             development_index=max(previous_state.development_index, previous_state.drive_slow),
             coherent_run_hours=event_age_hours,
             v_float=v_float,
+            S_wind=S_wind,
         )
 
         response_target_l = hybrid.response_target_l
@@ -747,7 +773,8 @@ def advance_langmuir_state(
             tau_fall=spacing_decay_hours,
         )
 
-        core_spacing_target = spacing_cl + coarsening_index * max(spacing_response - spacing_cl, 0.0)
+        intensity_stretch = 1.0 + 0.3 * (forcing_intensity / (1.0 + forcing_intensity))
+        core_spacing_target = spacing_cl + coarsening_index * intensity_stretch * max(spacing_response - spacing_cl, 0.0)
         target_l = _l_from_spacing(core_spacing_target, params.depth)
         spacing_core = _evolve_state_variable(
             prev_core_spacing,
@@ -779,7 +806,7 @@ def advance_langmuir_state(
             tau_rise=visibility_on_hours,
             tau_fall=visibility_off_hours,
         )
-        spacing_visible = visible_fraction * spacing_core
+        spacing_visible = spacing_core if visible_fraction > 0.15 else float("nan")
         spacing_observable = spacing_visible
         spacing_nl = spacing_core
 
@@ -818,6 +845,7 @@ def advance_langmuir_state(
             event_age_hours=float(event_age_hours),
             decay_age_hours=float(decay_age_hours),
             response_separation=float(response_separation),
+            forcing_intensity=float(forcing_intensity),
             buoyancy_Q=buoyancy_Q,
             rho_cell=rho_cell,
             v_float=v_float,
