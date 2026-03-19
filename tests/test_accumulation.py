@@ -49,9 +49,9 @@ def test_hybrid_visible_spacing_sits_between_cl_and_response_scales() -> None:
 
     core_spacing = 2.0 * math.pi * 9.0 / result["selected_l"]
     assert result["spacing_response"] > core_spacing > result["spacing_cl"]
-    assert result["spacing_visible"] == core_spacing
-    assert result["spacing_observable"] == result["visible_fraction"] * core_spacing
-    assert result["spacing_nonlinear"] == result["spacing_visible"]
+    assert abs(result["spacing_visible"] - core_spacing) < 1.0e-10
+    assert abs(result["spacing_observable"] - result["visible_fraction"] * core_spacing) < 1.0e-10
+    assert abs(result["spacing_nonlinear"] - result["spacing_visible"]) < 1.0e-10
     assert 0.0 < result["response_mix"] < 1.0
     assert result["response_bandwidth"] > 0.0
     assert 0.0 <= result["large_scale_fraction"] <= 1.0
