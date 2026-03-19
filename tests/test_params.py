@@ -39,6 +39,18 @@ def test_current_profile_has_zero_net_transport() -> None:
     assert abs(float(transport)) < 1.0e-6
 
 
+def test_s_wind_increases_monotonically_with_wind_speed() -> None:
+    s_values = []
+    for u10 in [3.0, 5.0, 7.0, 9.0]:
+        p = LCParams(U10=u10, depth=9.0, fetch=15000.0)
+        s_values.append(p.hydrodynamic_state.S_wind)
+    for i in range(len(s_values) - 1):
+        assert s_values[i] < s_values[i + 1], (
+            f"S_wind not monotonic: S_wind({3 + 2 * i})={s_values[i]}, "
+            f"S_wind({5 + 2 * i})={s_values[i + 1]}"
+        )
+
+
 def test_hydrodynamic_state_exposes_resolved_lagrangian_profiles() -> None:
     params = LCParams(U10=6.0, depth=9.0, fetch=15000.0)
     hydro = params.hydrodynamic_state

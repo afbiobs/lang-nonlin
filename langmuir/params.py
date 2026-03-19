@@ -41,6 +41,7 @@ class HydrodynamicState:
     forcing_depth_fraction: float
     shear_to_drift_ratio: float
     cancellation_index: float
+    S_wind: float
 
 
 def _integrate_profile(values: np.ndarray, z: np.ndarray) -> float:
@@ -271,6 +272,7 @@ def _compute_hydrodynamic_core(
     U_surface = float(current_velocity[-1])
     La_t = math.sqrt(max(u_star, 1.0e-12) / max(D_surface, 1.0e-12))
     Ra = U_surface * D_surface * depth * depth / max(nu_T * nu_T, 1.0e-30)
+    S_wind = cl_drive_integral * depth * depth / max(nu_T, 1.0e-12)
 
     return {
         "drag_coefficient": float(drag_coefficient),
@@ -300,6 +302,7 @@ def _compute_hydrodynamic_core(
         "forcing_depth_fraction": float(forcing_depth_fraction),
         "shear_to_drift_ratio": float(shear_to_drift_ratio),
         "Ra": float(Ra),
+        "S_wind": float(S_wind),
     }
 
 
@@ -412,6 +415,7 @@ class LCParams:
             forcing_depth_fraction=float(core["forcing_depth_fraction"]),
             shear_to_drift_ratio=float(core["shear_to_drift_ratio"]),
             cancellation_index=float(cancellation_index),
+            S_wind=float(core["S_wind"]),
         )
         self.u_star = self.hydrodynamic_state.u_star
         self.U_surface = self.hydrodynamic_state.U_surface

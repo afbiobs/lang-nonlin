@@ -18,12 +18,22 @@ from .utils import poly_eval
 class ShearDriftProfile:
     """Polynomial representation of U'(z) and D'(z)."""
 
-    def __init__(self, a_coeffs: np.ndarray, b_coeffs: np.ndarray, name: str = "custom"):
+    def __init__(
+        self,
+        a_coeffs: np.ndarray,
+        b_coeffs: np.ndarray,
+        name: str = "custom",
+        *,
+        drift_amplitude: float = 1.0,
+        shear_amplitude: float = 1.0,
+    ):
         self.a = np.array(a_coeffs, dtype=float)
         self.b = np.array(b_coeffs, dtype=float)
         self.M = len(self.a) - 1
         self.N = len(self.b) - 1
         self.name = name
+        self.drift_amplitude = float(drift_amplitude)
+        self.shear_amplitude = float(shear_amplitude)
 
     def D_prime(self, z: np.ndarray | float) -> np.ndarray | float:
         return poly_eval(self.a, z)
@@ -102,6 +112,9 @@ def shallow_lake_profile(params) -> ShearDriftProfile:
     current_shape = np.maximum(current_shear, 1.0e-6)
     drift_shape = np.maximum(drift_gradient, 1.0e-6)
 
+    shear_amplitude = _integrate_trapezoid(np.abs(current_shear), z)
+    drift_amplitude = _integrate_trapezoid(np.abs(drift_gradient), z)
+
     b_coeffs = _fit_positive_profile(z, current_shape, degree=5)
     a_coeffs = _fit_positive_profile(z, drift_shape, degree=5)
 
@@ -109,6 +122,8 @@ def shallow_lake_profile(params) -> ShearDriftProfile:
         a_coeffs=a_coeffs,
         b_coeffs=b_coeffs,
         name="shallow_lake",
+        drift_amplitude=max(drift_amplitude, 1.0e-8),
+        shear_amplitude=max(shear_amplitude, 1.0e-8),
     )
     if not profile.check_instability_condition():
         raise ValueError("Fitted shallow-lake profile violates D'U' >= 0.")

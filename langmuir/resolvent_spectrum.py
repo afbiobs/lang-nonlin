@@ -163,6 +163,7 @@ class HybridSpacingSpectrum:
     large_scale_fraction: float
     response_peak_gain: float
     hybrid_peak_gain: float
+    intensity_scale: float
 
 
 def build_hybrid_spacing_spectrum(
@@ -174,6 +175,7 @@ def build_hybrid_spacing_spectrum(
     development_index: float,
     coherent_run_hours: float,
     v_float: float,
+    S_wind: float = 1.0,
     n_scan: int = 64,
 ) -> HybridSpacingSpectrum:
     l_values = np.geomspace(0.18, 3.60, n_scan)
@@ -189,6 +191,10 @@ def build_hybrid_spacing_spectrum(
         reference_l=max(nl_result.lcNL, 0.1),
     )
 
+    # Preserve relative shape via normalization for mixing weights,
+    # but carry absolute forcing intensity through S_wind.
+    S_ref = 1.0
+    intensity_scale = max(S_wind / S_ref, 0.01)
     cl_norm = _normalize(cl_growth)
     response_norm = _normalize(response_energy)
     supercriticality = max((params.Ra - nl_result.RcNL) / max(nl_result.RcNL, 1.0e-12), 0.0)
@@ -215,9 +221,16 @@ def build_hybrid_spacing_spectrum(
     )
 
     hybrid_energy = visibility_weight * ((1.0 - response_mix) * cl_norm + response_mix * response_norm)
+    # Weight target selection by forcing intensity: stronger wind biases toward
+    # response (larger) scales by boosting the response_norm contribution.
+    intensity_bias = math.log1p(intensity_scale) / math.log1p(1.0)  # ~1 at moderate wind
+    intensity_weighted = visibility_weight * (
+        (1.0 - response_mix) * cl_norm
+        + response_mix * intensity_bias * response_norm
+    )
     cl_target_l, _ = _weighted_log_target(l_values, np.maximum(cl_norm, 1.0e-12))
     response_target_l, response_bandwidth = _weighted_log_target(l_values, np.maximum(response_norm, 1.0e-12))
-    visible_target_l, _ = _weighted_log_target(l_values, np.maximum(hybrid_energy, 1.0e-12))
+    visible_target_l, _ = _weighted_log_target(l_values, np.maximum(intensity_weighted, 1.0e-12))
 
     if not np.isfinite(cl_target_l):
         cl_target_l = float(nl_result.lcNL)
@@ -238,7 +251,7 @@ def build_hybrid_spacing_spectrum(
         cl_growth=cl_norm,
         response_energy=response_norm,
         visibility_weight=visibility_weight,
-        hybrid_energy=_normalize(hybrid_energy),
+        hybrid_energy=np.clip(hybrid_energy, 0.0, None),
         cl_target_l=float(cl_target_l),
         response_target_l=float(response_target_l),
         visible_target_l=float(visible_target_l),
@@ -247,4 +260,5 @@ def build_hybrid_spacing_spectrum(
         large_scale_fraction=float(large_scale_fraction),
         response_peak_gain=float(np.max(response_norm) if len(response_norm) else 0.0),
         hybrid_peak_gain=float(np.max(hybrid_energy) if len(hybrid_energy) else 0.0),
+        intensity_scale=float(intensity_scale),
     )
