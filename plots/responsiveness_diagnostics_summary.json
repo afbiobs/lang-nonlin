@@ -1,0 +1,28 @@
+{
+  "manual": {
+    "source_dir": "/home/op/PROJECTS/lang-nonlin/outputs/2026-03-19_manual_validation_timeline_v8",
+    "core_spacing_q10_m": 37.52088395235594,
+    "core_spacing_q90_m": 46.04445381449719,
+    "core_spacing_range_mean_m": 8.886851519531778,
+    "visibility_q10": 0.07174272811669809,
+    "visibility_q90": 0.4059546503911689,
+    "mismatch_counts": {
+      "envelope_match": 21,
+      "visibility-limited": 15,
+      "observation-outside-envelope": 3
+    }
+  },
+  "wiggle": {
+    "source_dir": "/home/op/PROJECTS/lang-nonlin/outputs/2026-03-19_wiggle_validation_timeline_v8",
+    "core_spacing_q10_m": 37.93410778409729,
+    "core_spacing_q90_m": 46.51286730379519,
+    "core_spacing_range_mean_m": 8.105276973403539,
+    "visibility_q10": 0.05876091140661941,
+    "visibility_q90": 0.3066630946152017,
+    "mismatch_counts": {
+      "observation-outside-envelope": 16,
+      "envelope_match": 15,
+      "visibility-limited": 3
+    }
+  }
+}

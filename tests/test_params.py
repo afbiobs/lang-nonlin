@@ -46,3 +46,7 @@ def test_hydrodynamic_state_exposes_resolved_lagrangian_profiles() -> None:
     assert np.all(hydro.nu_T_profile > 0.0)
     assert np.allclose(hydro.lagrangian_velocity, hydro.current_velocity + hydro.stokes_drift)
     assert np.allclose(hydro.lagrangian_shear, hydro.current_shear + hydro.stokes_gradient)
+    assert hydro.cl_drive_integral >= 0.0
+    assert 0.0 <= hydro.forcing_depth_fraction <= 1.0
+    assert hydro.shear_to_drift_ratio > 0.0
+    assert math.isfinite(hydro.cancellation_index)

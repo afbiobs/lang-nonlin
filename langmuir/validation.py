@@ -139,9 +139,11 @@ def nonlinear_consistency_envelope(results_df: pd.DataFrame | None = None,
 
     for depth in depths:
         spacings_NL = []
+        spacings_core = []
         spacings_CL = []
         spacings_response = []
         spacings_L = []
+        visibility_index = []
         is_visible = []
         Ra_values = []
         regimes = []
@@ -155,9 +157,11 @@ def nonlinear_consistency_envelope(results_df: pd.DataFrame | None = None,
             )
 
             spacings_NL.append(result["spacing_nonlinear"])
+            spacings_core.append(result.get("spacing_core", float("nan")))
             spacings_CL.append(result.get("spacing_cl", float("nan")))
             spacings_response.append(result.get("spacing_response", float("nan")))
             spacings_L.append(result["spacing_linear"])
+            visibility_index.append(result.get("visible_fraction", float("nan")))
             is_visible.append(result["is_visible"])
             Ra_values.append(result["Ra"])
             regimes.append(result["regime"])
@@ -165,9 +169,11 @@ def nonlinear_consistency_envelope(results_df: pd.DataFrame | None = None,
         envelopes[depth] = {
             "wind": wind_range.tolist(),
             "spacing_NL": spacings_NL,
+            "spacing_core": spacings_core,
             "spacing_CL": spacings_CL,
             "spacing_response": spacings_response,
             "spacing_L": spacings_L,
+            "visibility_index": visibility_index,
             "is_visible": is_visible,
             "Ra": Ra_values,
             "regimes": regimes,
@@ -355,10 +361,12 @@ def validate_nonlinear(
                     "lon": lon,
                     "observed_spacing_m": row["observed_spacing_m"],
                     "predicted_spacing_NL_m": float("nan"),
+                    "predicted_core_spacing_m": float("nan"),
                     "predicted_spacing_CL_m": float("nan"),
                     "predicted_spacing_response_m": float("nan"),
                     "predicted_spacing_visible_m": float("nan"),
                     "predicted_spacing_observable_m": float("nan"),
+                    "predicted_visibility_index": float("nan"),
                     "predicted_spacing_L_m": float("nan"),
                     "error_NL_m": float("nan"),
                     "error_L_m": float("nan"),
@@ -390,6 +398,19 @@ def validate_nonlinear(
                     "large_scale_fraction": float("nan"),
                     "visible_fraction": float("nan"),
                     "coarsening_index": float("nan"),
+                    "drive_fast": float("nan"),
+                    "drive_slow": float("nan"),
+                    "direction_persistence": float("nan"),
+                    "decay_memory": float("nan"),
+                    "event_age_hours": float("nan"),
+                    "decay_age_hours": float("nan"),
+                    "response_separation": float("nan"),
+                    "cl_drive_integral": float("nan"),
+                    "forcing_depth_fraction": float("nan"),
+                    "shear_to_drift_ratio": float("nan"),
+                    "cancellation_index": float("nan"),
+                    "state_saturation_flag": False,
+                    "mismatch_class": "weather_error",
                     "is_visible": False,
                     "accumulation_factor": float("nan"),
                     "w_down_max": float("nan"),
@@ -420,6 +441,7 @@ def validate_nonlinear(
         timeline_complete = len(timeline_df) > 0 and diagnostics.get("status") == "complete"
         if timeline_complete:
             spacing_nl = float(diagnostics["spacing_at_obs_m"])
+            spacing_core = float(diagnostics.get("spacing_core_at_obs_m", float("nan")))
             spacing_cl = float(diagnostics.get("spacing_cl_at_obs_m", float("nan")))
             spacing_response = float(diagnostics.get("spacing_response_at_obs_m", float("nan")))
             spacing_l = float(diagnostics.get("spacing_linear_at_obs_m", float("nan")))
@@ -440,6 +462,7 @@ def validate_nonlinear(
             )
         else:
             spacing_nl = float("nan")
+            spacing_core = float("nan")
             spacing_cl = float("nan")
             spacing_response = float("nan")
             spacing_l = float("nan")
@@ -461,10 +484,12 @@ def validate_nonlinear(
                 "lon": lon,
                 "observed_spacing_m": row["observed_spacing_m"],
                 "predicted_spacing_NL_m": spacing_nl,
+                "predicted_core_spacing_m": spacing_core,
                 "predicted_spacing_CL_m": spacing_cl,
                 "predicted_spacing_response_m": spacing_response,
-                "predicted_spacing_visible_m": spacing_nl,
+                "predicted_spacing_visible_m": float(diagnostics.get("spacing_visible_at_obs_m", float("nan"))),
                 "predicted_spacing_observable_m": float(diagnostics.get("spacing_observable_at_obs_m", float("nan"))),
+                "predicted_visibility_index": float(diagnostics.get("visibility_at_obs", float("nan"))),
                 "predicted_spacing_L_m": spacing_l,
                 "error_NL_m": spacing_nl - row["observed_spacing_m"]
                 if not math.isnan(spacing_nl)
@@ -502,6 +527,19 @@ def validate_nonlinear(
                 "large_scale_fraction": float("nan") if not timeline_complete else float(diagnostics.get("large_scale_fraction_at_obs", float("nan"))),
                 "visible_fraction": float("nan") if not timeline_complete else float(diagnostics.get("visible_fraction_at_obs", float("nan"))),
                 "coarsening_index": float("nan") if not timeline_complete else float(diagnostics.get("coarsening_index_at_obs", float("nan"))),
+                "drive_fast": float("nan") if not timeline_complete else float(diagnostics.get("drive_fast_at_obs", float("nan"))),
+                "drive_slow": float("nan") if not timeline_complete else float(diagnostics.get("drive_slow_at_obs", float("nan"))),
+                "direction_persistence": float("nan") if not timeline_complete else float(diagnostics.get("direction_persistence_at_obs", float("nan"))),
+                "decay_memory": float("nan") if not timeline_complete else float(diagnostics.get("decay_memory_at_obs", float("nan"))),
+                "event_age_hours": float("nan") if not timeline_complete else float(diagnostics.get("event_age_at_obs_h", float("nan"))),
+                "decay_age_hours": float("nan") if not timeline_complete else float(diagnostics.get("decay_age_at_obs_h", float("nan"))),
+                "response_separation": float("nan") if not timeline_complete else float(diagnostics.get("response_separation_at_obs", float("nan"))),
+                "cl_drive_integral": float("nan") if not timeline_complete else float(diagnostics.get("cl_drive_integral_at_obs", float("nan"))),
+                "forcing_depth_fraction": float("nan") if not timeline_complete else float(diagnostics.get("forcing_depth_fraction_at_obs", float("nan"))),
+                "shear_to_drift_ratio": float("nan") if not timeline_complete else float(diagnostics.get("shear_to_drift_ratio_at_obs", float("nan"))),
+                "cancellation_index": float("nan") if not timeline_complete else float(diagnostics.get("cancellation_index_at_obs", float("nan"))),
+                "state_saturation_flag": False if not timeline_complete else bool(diagnostics.get("state_saturated_at_obs", False)),
+                "mismatch_class": "timeline_incomplete" if not timeline_complete else str(diagnostics.get("mismatch_class", "")),
                 "is_visible": is_visible,
                 "accumulation_factor": accumulation_factor,
                 "w_down_max": w_down_max,
@@ -586,9 +624,29 @@ def validate_nonlinear(
         metrics["timeline_spacing_q10_m"] = float(timeline_valid["spacing_at_obs_m"].quantile(0.10))
         metrics["timeline_spacing_q90_m"] = float(timeline_valid["spacing_at_obs_m"].quantile(0.90))
         metrics["timeline_spacing_std_mean_m"] = float(timeline_valid["spacing_std_prev_48h_m"].mean())
+        if "spacing_core_at_obs_m" in timeline_valid.columns:
+            metrics["timeline_core_spacing_q10_m"] = float(timeline_valid["spacing_core_at_obs_m"].quantile(0.10))
+            metrics["timeline_core_spacing_q90_m"] = float(timeline_valid["spacing_core_at_obs_m"].quantile(0.90))
+            core_error = timeline_valid["spacing_core_at_obs_m"] - timeline_valid["observed_spacing_m"]
+            metrics["rmse_timeline_core_obs_m"] = float(np.sqrt(np.mean(core_error ** 2)))
+        if "visibility_at_obs" in timeline_valid.columns:
+            metrics["timeline_visibility_q10"] = float(timeline_valid["visibility_at_obs"].quantile(0.10))
+            metrics["timeline_visibility_q90"] = float(timeline_valid["visibility_at_obs"].quantile(0.90))
+        if "core_spacing_range_prev_48h_m" in timeline_valid.columns:
+            metrics["timeline_core_spacing_range_mean_m"] = float(timeline_valid["core_spacing_range_prev_48h_m"].mean())
+        if "state_saturated_fraction_prev_48h" in timeline_valid.columns:
+            metrics["timeline_state_saturated_fraction"] = float(timeline_valid["state_saturated_fraction_prev_48h"].mean())
         if "integrated_supercriticality_prev_48h" in timeline_valid.columns:
             metrics["timeline_spacing_vs_integrated_supercriticality_corr"] = float(
                 timeline_valid["spacing_at_obs_m"].corr(timeline_valid["integrated_supercriticality_prev_48h"])
+            )
+        if "wind_mean_prev_48h" in timeline_valid.columns:
+            metrics["timeline_spacing_vs_wind_mean_corr"] = float(
+                timeline_valid["spacing_at_obs_m"].corr(timeline_valid["wind_mean_prev_48h"])
+            )
+        if "spacing_core_at_obs_m" in timeline_valid.columns and "wind_mean_prev_48h" in timeline_valid.columns:
+            metrics["timeline_core_spacing_vs_wind_mean_corr"] = float(
+                timeline_valid["spacing_core_at_obs_m"].corr(timeline_valid["wind_mean_prev_48h"])
             )
         if "spacing_cl_at_obs_m" in timeline_valid.columns:
             cl_valid = timeline_valid.dropna(subset=["spacing_cl_at_obs_m"])
@@ -614,6 +672,13 @@ def validate_nonlinear(
             metrics["timeline_spacing_vs_setup_corr"] = float(
                 timeline_valid["spacing_at_obs_m"].corr(timeline_valid["setup_at_obs"])
             )
+        if "cancellation_index_at_obs" in timeline_valid.columns:
+            metrics["timeline_spacing_vs_cancellation_corr"] = float(
+                timeline_valid["spacing_at_obs_m"].corr(timeline_valid["cancellation_index_at_obs"])
+            )
+        if "mismatch_class" in timeline_valid.columns:
+            mismatch_counts = timeline_valid["mismatch_class"].value_counts(dropna=False).to_dict()
+            metrics["mismatch_class_counts"] = {str(key): int(value) for key, value in mismatch_counts.items()}
 
     # R0 and kappa from the model
     if nl_result is not None:

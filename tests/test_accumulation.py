@@ -47,14 +47,17 @@ def test_hybrid_visible_spacing_sits_between_cl_and_response_scales() -> None:
         )
         state = result["mode_state"]
 
-    core_spacing = 2.0 * math.pi * 9.0 / result["selected_l"]
+    core_spacing = result["spacing_core"]
     assert result["spacing_response"] > core_spacing > result["spacing_cl"]
-    assert abs(result["spacing_visible"] - core_spacing) < 1.0e-10
+    assert result["spacing_visible"] < core_spacing
     assert abs(result["spacing_observable"] - result["visible_fraction"] * core_spacing) < 1.0e-10
-    assert abs(result["spacing_nonlinear"] - result["spacing_visible"]) < 1.0e-10
+    assert abs(result["spacing_nonlinear"] - core_spacing) < 1.0e-10
     assert 0.0 < result["response_mix"] < 1.0
     assert result["response_bandwidth"] > 0.0
     assert 0.0 <= result["large_scale_fraction"] <= 1.0
+    assert 0.0 <= result["drive_fast"] <= 1.0
+    assert 0.0 <= result["drive_slow"] <= 1.0
+    assert 0.0 <= result["direction_persistence"] <= 1.0
 
 
 def test_spacing_lifecycle_grows_then_decays_with_forcing() -> None:
@@ -92,3 +95,39 @@ def test_spacing_lifecycle_grows_then_decays_with_forcing() -> None:
     assert math.isfinite(decay[0]["spacing_nonlinear"])
     assert decay[0]["spacing_observable"] > decay[-1]["spacing_observable"]
     assert decay[0]["visible_fraction"] > decay[-1]["visible_fraction"]
+    assert decay[0]["decay_memory"] < decay[-1]["decay_memory"]
+
+
+def test_event_memory_tracks_growth_and_decay_timescales() -> None:
+    state = LangmuirModeState()
+    growth = []
+    for _ in range(8):
+        result = advance_langmuir_state(
+            LCParams(U10=7.0, depth=9.0, fetch=15000.0),
+            previous_state=state,
+            dt_hours=0.25,
+            forcing_coherence=0.98,
+            shortwave_radiation=450.0,
+            temperature_c=23.0,
+        )
+        growth.append(result)
+        state = result["mode_state"]
+
+    assert growth[0]["spacing_visible"] != growth[-1]["spacing_visible"]
+    assert growth[0]["spacing_visible"] < growth[-1]["spacing_visible"]
+    assert growth[0]["event_age_hours"] < growth[-1]["event_age_hours"]
+    assert growth[0]["drive_fast"] < growth[-1]["drive_fast"]
+    assert growth[0]["drive_slow"] < growth[-1]["drive_slow"]
+
+    collapse = advance_langmuir_state(
+        LCParams(U10=1.5, depth=9.0, fetch=15000.0),
+        previous_state=state,
+        dt_hours=1.0,
+        forcing_coherence=0.05,
+        shortwave_radiation=0.0,
+        temperature_c=18.0,
+    )
+
+    assert collapse["spacing_core"] > collapse["spacing_visible"]
+    assert collapse["visible_fraction"] < growth[-1]["visible_fraction"]
+    assert collapse["decay_memory"] > growth[-1]["decay_memory"]

@@ -40,6 +40,13 @@ class LangmuirModeState:
     large_scale_fraction: float = 0.0
     visible_fraction: float = 0.0
     coarsening_index: float = 0.0
+    drive_fast: float = 0.0
+    drive_slow: float = 0.0
+    direction_persistence: float = 0.0
+    decay_memory: float = 1.0
+    event_age_hours: float = 0.0
+    decay_age_hours: float = 0.0
+    response_separation: float = 0.0
     buoyancy_Q: float = 0.15
     rho_cell: float = 990.0
     v_float: float = 1.0e-4
@@ -56,6 +63,14 @@ class LangmuirDynamicsConfig:
     merge_supercriticality_threshold: float = 0.15
     merge_step_factor: float = 0.85
     coherence_threshold: float = 0.6
+    fast_memory_hours: float = 0.25
+    slow_memory_hours: float = 2.0
+    direction_memory_hours: float = 1.0
+    decay_memory_hours: float = 0.75
+    spacing_growth_hours: float = 0.5
+    spacing_decay_hours: float = 2.0
+    visibility_on_hours: float = 0.25
+    visibility_off_hours: float = 1.0
 
     def to_dict(self) -> dict[str, float]:
         return asdict(self)
@@ -68,8 +83,28 @@ def _clip01(value: float) -> float:
     return float(min(max(value, 0.0), 1.0))
 
 
-def _spacing_from_l(l_value: float, depth: float) -> float:
-    return 2.0 * math.pi / l_value * depth if l_value > 0.0 else float("nan")
+def _relax_towards(current: float, target: float, *, dt_hours: float, tau_hours: float) -> float:
+    tau_eff = max(float(tau_hours), 1.0e-6)
+    alpha = 1.0 - math.exp(-max(float(dt_hours), 1.0e-6) / tau_eff)
+    return float(current + alpha * (target - current))
+
+
+def _evolve_state_variable(
+    current: float,
+    target: float,
+    *,
+    dt_hours: float,
+    tau_rise: float,
+    tau_fall: float,
+) -> float:
+    tau = tau_rise if target >= current else tau_fall
+    return _relax_towards(current, target, dt_hours=dt_hours, tau_hours=tau)
+
+
+def _spacing_from_l(l_value: float | None, depth: float) -> float:
+    if l_value is None or not math.isfinite(float(l_value)) or float(l_value) <= 0.0:
+        return float("nan")
+    return 2.0 * math.pi / float(l_value) * depth
 
 
 def _l_from_spacing(spacing: float, depth: float) -> float:
@@ -303,6 +338,81 @@ def bloom_feedback_potential(
     return float(min(max(feedback, 0.0), 1.0))
 
 
+def _empty_prediction_result(
+    *,
+    params: LCParams,
+    mode_state: LangmuirModeState,
+    fallback_reason: str,
+    physics_status: str,
+    error: str,
+) -> dict:
+    resurfacing_time = params.depth / max(mode_state.v_float, 1.0e-12)
+    return {
+        "spacing_nonlinear": float("nan"),
+        "spacing_core": float("nan"),
+        "spacing_cl": float("nan"),
+        "spacing_response": float("nan"),
+        "spacing_visible": float("nan"),
+        "spacing_observable": float("nan"),
+        "spacing_linear": float("nan"),
+        "selected_l": float("nan"),
+        "target_l": float("nan"),
+        "response_target_l": float("nan"),
+        "selected_l_cl": float("nan"),
+        "target_l_cl": float("nan"),
+        "unstable_l_min": float("nan"),
+        "unstable_l_max": float("nan"),
+        "peak_growth_proxy": 0.0,
+        "amplitude_index": 0.0,
+        "development_index": 0.0,
+        "setup_index": 0.0,
+        "coherent_run_hours": 0.0,
+        "response_bandwidth": 0.0,
+        "response_mix": 0.0,
+        "large_scale_fraction": 0.0,
+        "visible_fraction": 0.0,
+        "coarsening_index": 0.0,
+        "drive_fast": 0.0,
+        "drive_slow": 0.0,
+        "direction_persistence": 0.0,
+        "decay_memory": 1.0,
+        "event_age_hours": 0.0,
+        "decay_age_hours": 0.0,
+        "response_separation": 0.0,
+        "cl_drive_integral": params.hydrodynamic_state.cl_drive_integral,
+        "forcing_depth_fraction": params.hydrodynamic_state.forcing_depth_fraction,
+        "shear_to_drift_ratio": params.hydrodynamic_state.shear_to_drift_ratio,
+        "cancellation_index": params.hydrodynamic_state.cancellation_index,
+        "state_saturation_flag": False,
+        "mode_state": mode_state,
+        "kappa": float("nan"),
+        "wavenumber_ratio": float("nan"),
+        "regime": "subcritical",
+        "hydrodynamic_regime": "subcritical",
+        "is_visible": False,
+        "accumulation_factor": 0.0,
+        "bloom_feedback": 0.0,
+        "w_down_max": 0.0,
+        "tau_acc_s": float("inf"),
+        "resurfacing_time_s": resurfacing_time,
+        "u_converge": 0.0,
+        "line_density_gain": 1.0,
+        "Ra": params.Ra,
+        "R0": float("nan"),
+        "RcNL": float("nan"),
+        "lcNL": float("nan"),
+        "lcL": float("nan"),
+        "aspect_ratio": float("nan"),
+        "rho_cell": mode_state.rho_cell,
+        "v_float": mode_state.v_float,
+        "buoyancy_Q": mode_state.buoyancy_Q,
+        "fallback_triggered": True,
+        "fallback_reason": fallback_reason,
+        "physics_status": physics_status,
+        "error": error,
+    }
+
+
 def advance_langmuir_state(
     params: LCParams,
     *,
@@ -357,54 +467,13 @@ def advance_langmuir_state(
             v_float=v_float,
             buoyancy_Q=buoyancy_Q,
         )
-        return {
-            "spacing_nonlinear": float("nan"),
-            "spacing_cl": float("nan"),
-            "spacing_response": float("nan"),
-            "spacing_visible": float("nan"),
-            "spacing_linear": float("nan"),
-            "selected_l": float("nan"),
-            "target_l": float("nan"),
-            "response_target_l": float("nan"),
-            "selected_l_cl": float("nan"),
-            "target_l_cl": float("nan"),
-            "unstable_l_min": float("nan"),
-            "unstable_l_max": float("nan"),
-            "peak_growth_proxy": 0.0,
-            "amplitude_index": 0.0,
-            "development_index": 0.0,
-            "setup_index": 0.0,
-            "coherent_run_hours": 0.0,
-            "response_bandwidth": 0.0,
-            "response_mix": 0.0,
-            "large_scale_fraction": 0.0,
-            "mode_state": mode_state,
-            "kappa": float("nan"),
-            "wavenumber_ratio": float("nan"),
-            "regime": "subcritical",
-            "hydrodynamic_regime": "subcritical",
-            "is_visible": False,
-            "accumulation_factor": 0.0,
-            "bloom_feedback": 0.0,
-            "w_down_max": 0.0,
-            "tau_acc_s": float("inf"),
-            "resurfacing_time_s": params.depth / max(v_float, 1.0e-12),
-            "u_converge": 0.0,
-            "line_density_gain": 1.0,
-            "Ra": params.Ra,
-            "R0": float("nan"),
-            "RcNL": float("nan"),
-            "lcNL": float("nan"),
-            "lcL": float("nan"),
-            "aspect_ratio": float("nan"),
-            "rho_cell": rho_cell,
-            "v_float": v_float,
-            "buoyancy_Q": buoyancy_Q,
-            "fallback_triggered": True,
-            "fallback_reason": str(exc),
-            "physics_status": "non_subcritical",
-            "error": str(exc),
-        }
+        return _empty_prediction_result(
+            params=params,
+            mode_state=mode_state,
+            fallback_reason=str(exc),
+            physics_status="non_subcritical",
+            error=str(exc),
+        )
     except Exception as exc:
         LOGGER.warning("Nonlinear solve failed: %s", exc)
         mode_state = LangmuirModeState(
@@ -412,54 +481,13 @@ def advance_langmuir_state(
             v_float=v_float,
             buoyancy_Q=buoyancy_Q,
         )
-        return {
-            "spacing_nonlinear": float("nan"),
-            "spacing_cl": float("nan"),
-            "spacing_response": float("nan"),
-            "spacing_visible": float("nan"),
-            "spacing_linear": float("nan"),
-            "selected_l": float("nan"),
-            "target_l": float("nan"),
-            "response_target_l": float("nan"),
-            "selected_l_cl": float("nan"),
-            "target_l_cl": float("nan"),
-            "unstable_l_min": float("nan"),
-            "unstable_l_max": float("nan"),
-            "peak_growth_proxy": 0.0,
-            "amplitude_index": 0.0,
-            "development_index": 0.0,
-            "setup_index": 0.0,
-            "coherent_run_hours": 0.0,
-            "response_bandwidth": 0.0,
-            "response_mix": 0.0,
-            "large_scale_fraction": 0.0,
-            "mode_state": mode_state,
-            "kappa": float("nan"),
-            "wavenumber_ratio": float("nan"),
-            "regime": "subcritical",
-            "hydrodynamic_regime": "subcritical",
-            "is_visible": False,
-            "accumulation_factor": 0.0,
-            "bloom_feedback": 0.0,
-            "w_down_max": 0.0,
-            "tau_acc_s": float("inf"),
-            "resurfacing_time_s": params.depth / max(v_float, 1.0e-12),
-            "u_converge": 0.0,
-            "line_density_gain": 1.0,
-            "Ra": params.Ra,
-            "R0": float("nan"),
-            "RcNL": float("nan"),
-            "lcNL": float("nan"),
-            "lcL": float("nan"),
-            "aspect_ratio": float("nan"),
-            "rho_cell": rho_cell,
-            "v_float": v_float,
-            "buoyancy_Q": buoyancy_Q,
-            "fallback_triggered": True,
-            "fallback_reason": str(exc),
-            "physics_status": "solver_failure",
-            "error": str(exc),
-        }
+        return _empty_prediction_result(
+            params=params,
+            mode_state=mode_state,
+            fallback_reason=str(exc),
+            physics_status="solver_failure",
+            error=str(exc),
+        )
 
     Ra = params.Ra
     R0 = nl_result.R0
@@ -474,24 +502,118 @@ def advance_langmuir_state(
     decay_hours_eff = _decay_hours(params, dynamics)
     coherence_decay_hours = _coherence_decay_hours(params, dynamics)
     merge_min_age_hours = _merge_min_age_hours(params, dynamics)
+    hydro = params.hydrodynamic_state
+    fast_memory_hours = max(dynamics.fast_memory_hours, 0.05)
+    slow_memory_hours = max(dynamics.slow_memory_hours, 0.10)
+    direction_memory_hours = max(dynamics.direction_memory_hours, 0.10)
+    decay_memory_hours = max(dynamics.decay_memory_hours, 0.10)
+    spacing_growth_hours = max(dynamics.spacing_growth_hours, 0.10)
+    spacing_decay_hours = max(dynamics.spacing_decay_hours, 0.25)
+    visibility_on_hours = max(dynamics.visibility_on_hours, 0.05)
+    visibility_off_hours = max(dynamics.visibility_off_hours, 0.10)
+
+    spectrum = {"l_min": float("nan"), "l_max": float("nan"), "peak_growth_proxy": 0.0}
+    wind_drive = _clip01((float(params.U10) - 2.5) / 5.0)
+    prev_core_spacing = _spacing_from_l(previous_state.selected_l, params.depth)
+    prev_cl_spacing = _spacing_from_l(previous_state.cl_selected_l, params.depth)
+    prev_response_spacing = _spacing_from_l(previous_state.response_target_l, params.depth)
+    if not math.isfinite(prev_cl_spacing):
+        prev_cl_spacing = spacing_l
+    if not math.isfinite(prev_response_spacing):
+        prev_response_spacing = prev_cl_spacing
+    if not math.isfinite(prev_core_spacing):
+        prev_core_spacing = prev_cl_spacing
+
+    setup_index = 0.0
+    coherent_run_hours = previous_state.coherent_run_hours
+    drive_fast = previous_state.drive_fast
+    drive_slow = previous_state.drive_slow
+    direction_persistence = previous_state.direction_persistence
+    decay_memory = previous_state.decay_memory
+    event_age_hours = previous_state.event_age_hours
+    decay_age_hours = previous_state.decay_age_hours + dt_eff
+    response_bandwidth = previous_state.response_bandwidth
+    response_mix = previous_state.response_mix
+    large_scale_fraction = previous_state.large_scale_fraction
+    response_separation = previous_state.response_separation
+    selected_l_cl = previous_state.cl_selected_l if previous_state.cl_selected_l is not None else lcL
+    target_l_cl = previous_state.cl_target_l if previous_state.cl_target_l is not None else lcL
+    response_target_l = previous_state.response_target_l if previous_state.response_target_l is not None else lcNL
+    target_l = previous_state.target_l if previous_state.target_l is not None else lcNL
 
     if hydrodynamic_regime == "subcritical" or lcNL <= 0.0:
         regime = "subcritical"
-        alpha = 1.0 - math.exp(-dt_eff / max(decay_hours_eff, 1.0e-6))
-        amplitude_index = previous_state.amplitude_index + alpha * (0.0 - previous_state.amplitude_index)
-        setup_index = previous_state.setup_index + alpha * (0.0 - previous_state.setup_index)
-        coherent_run_hours = previous_state.coherent_run_hours * math.exp(-dt_eff / max(coherence_decay_hours, 1.0e-6))
-        visible_fraction = previous_state.visible_fraction * math.exp(-dt_eff / max(decay_hours_eff, 1.0e-6))
-        coarsening_index = previous_state.coarsening_index * math.exp(
-            -dt_eff / max(1.6 * decay_hours_eff, 1.0e-6)
+        amplitude_index = _relax_towards(previous_state.amplitude_index, 0.0, dt_hours=dt_eff, tau_hours=decay_hours_eff)
+        drive_fast = _evolve_state_variable(
+            previous_state.drive_fast,
+            0.0,
+            dt_hours=dt_eff,
+            tau_rise=fast_memory_hours,
+            tau_fall=decay_memory_hours,
         )
-        development_index = visible_fraction * (0.25 + 0.75 * coarsening_index)
+        drive_slow = _evolve_state_variable(
+            previous_state.drive_slow,
+            0.0,
+            dt_hours=dt_eff,
+            tau_rise=slow_memory_hours,
+            tau_fall=spacing_decay_hours,
+        )
+        direction_persistence = _evolve_state_variable(
+            previous_state.direction_persistence,
+            0.0,
+            dt_hours=dt_eff,
+            tau_rise=direction_memory_hours,
+            tau_fall=visibility_off_hours,
+        )
+        decay_memory = _evolve_state_variable(
+            previous_state.decay_memory,
+            1.0,
+            dt_hours=dt_eff,
+            tau_rise=decay_memory_hours,
+            tau_fall=fast_memory_hours,
+        )
+        setup_index = drive_fast
+        coherent_run_hours = previous_state.coherent_run_hours * math.exp(-dt_eff / max(coherence_decay_hours, 1.0e-6))
+        event_age_hours = 0.0
+        visible_fraction = _evolve_state_variable(
+            previous_state.visible_fraction,
+            0.0,
+            dt_hours=dt_eff,
+            tau_rise=visibility_on_hours,
+            tau_fall=visibility_off_hours,
+        )
+        coarsening_index = _evolve_state_variable(
+            previous_state.coarsening_index,
+            0.0,
+            dt_hours=dt_eff,
+            tau_rise=slow_memory_hours,
+            tau_fall=spacing_decay_hours,
+        )
+        response_bandwidth = float(previous_state.response_bandwidth * math.exp(-dt_eff / max(decay_hours_eff, 1.0e-6)))
+        response_mix = float(previous_state.response_mix * math.exp(-dt_eff / max(decay_hours_eff, 1.0e-6)))
+        large_scale_fraction = float(previous_state.large_scale_fraction * math.exp(-dt_eff / max(decay_hours_eff, 1.0e-6)))
+        response_separation = float(previous_state.response_separation * math.exp(-dt_eff / max(spacing_decay_hours, 1.0e-6)))
+        development_index = visible_fraction * (0.20 + 0.80 * max(coarsening_index, drive_slow))
+        spacing_cl = prev_cl_spacing
+        spacing_response = prev_response_spacing
+        core_spacing_target = spacing_cl
+        spacing_core = _evolve_state_variable(
+            prev_core_spacing,
+            core_spacing_target,
+            dt_hours=dt_eff,
+            tau_rise=spacing_growth_hours,
+            tau_fall=spacing_decay_hours,
+        )
+        selected_l = _l_from_spacing(spacing_core, params.depth)
+        spacing_visible = visible_fraction * spacing_core
+        spacing_observable = spacing_visible
+        spacing_nl = spacing_core
         mode_state = LangmuirModeState(
-            selected_l=previous_state.selected_l,
-            target_l=previous_state.target_l,
-            response_target_l=previous_state.response_target_l,
-            cl_selected_l=previous_state.cl_selected_l,
-            cl_target_l=previous_state.cl_target_l,
+            selected_l=float(selected_l),
+            target_l=float(target_l) if target_l is not None else None,
+            response_target_l=float(response_target_l) if response_target_l is not None else None,
+            cl_selected_l=float(selected_l_cl) if selected_l_cl is not None else None,
+            cl_target_l=float(target_l_cl) if target_l_cl is not None else None,
             amplitude_index=float(amplitude_index),
             development_index=float(development_index),
             regime=regime,
@@ -499,62 +621,70 @@ def advance_langmuir_state(
             merging_age_hours=0.0,
             setup_index=float(setup_index),
             coherent_run_hours=float(coherent_run_hours),
-            response_bandwidth=float(previous_state.response_bandwidth * math.exp(-dt_eff / max(decay_hours_eff, 1.0e-6))),
-            response_mix=float(previous_state.response_mix * math.exp(-dt_eff / max(decay_hours_eff, 1.0e-6))),
-            large_scale_fraction=float(previous_state.large_scale_fraction * math.exp(-dt_eff / max(decay_hours_eff, 1.0e-6))),
+            response_bandwidth=float(response_bandwidth),
+            response_mix=float(response_mix),
+            large_scale_fraction=float(large_scale_fraction),
             visible_fraction=float(visible_fraction),
             coarsening_index=float(coarsening_index),
+            drive_fast=float(drive_fast),
+            drive_slow=float(drive_slow),
+            direction_persistence=float(direction_persistence),
+            decay_memory=float(decay_memory),
+            event_age_hours=float(event_age_hours),
+            decay_age_hours=float(decay_age_hours),
+            response_separation=float(response_separation),
             buoyancy_Q=buoyancy_Q,
             rho_cell=rho_cell,
             v_float=v_float,
         )
-        selected_l = float(mode_state.selected_l) if mode_state.selected_l is not None else float("nan")
-        target_l = float(mode_state.target_l) if mode_state.target_l is not None else float("nan")
-        response_target_l = (
-            float(mode_state.response_target_l)
-            if mode_state.response_target_l is not None
-            else float("nan")
-        )
-        selected_l_cl = (
-            float(mode_state.cl_selected_l)
-            if mode_state.cl_selected_l is not None
-            else float("nan")
-        )
-        target_l_cl = float(mode_state.cl_target_l) if mode_state.cl_target_l is not None else float("nan")
-        spacing_cl = _spacing_from_l(selected_l_cl, params.depth)
-        spacing_response = _spacing_from_l(response_target_l, params.depth)
-        core_spacing = _spacing_from_l(selected_l, params.depth)
-        spacing_visible = core_spacing
-        spacing_observable = float(mode_state.visible_fraction * core_spacing) if math.isfinite(core_spacing) else 0.0
-        spacing_nl = spacing_visible
-        response_bandwidth = float(mode_state.response_bandwidth)
-        response_mix = float(mode_state.response_mix)
-        large_scale_fraction = float(mode_state.large_scale_fraction)
-        spectrum = {"l_min": float("nan"), "l_max": float("nan"), "peak_growth_proxy": 0.0}
     else:
         spectrum = supercritical_mode_spectrum(Ra, nl_result.neutral_curve_NL, lcNL, RcNL)
         target_l_cl = spectrum["target_l"]
         supercriticality = max((Ra - RcNL) / max(RcNL, 1.0e-12), 0.0)
-        run_drive = coherent_run_drive(
-            params,
-            supercriticality=supercriticality,
-            coherence=coherence,
-            dynamics=dynamics,
+        run_drive = coherent_run_drive(params, supercriticality=supercriticality, coherence=coherence, dynamics=dynamics)
+        coherence_drive = 0.0
+        if coherence > dynamics.coherence_threshold:
+            coherence_drive = (coherence - dynamics.coherence_threshold) / max(1.0 - dynamics.coherence_threshold, 1.0e-6)
+        supercritical_drive = supercriticality / (0.15 + supercriticality)
+        event_drive = _clip01((0.20 + 0.80 * wind_drive) * coherence_drive * supercritical_drive)
+        event_active = event_drive > 0.02
+        drive_fast = _evolve_state_variable(
+            previous_state.drive_fast,
+            event_drive if event_active else 0.0,
+            dt_hours=dt_eff,
+            tau_rise=fast_memory_hours,
+            tau_fall=decay_memory_hours,
         )
-        max_coherent_hours = 4.0 * relax_hours
-        coherent_run_hours = (
-            previous_state.coherent_run_hours + dt_eff * run_drive
-            if run_drive > 0.0
-            else previous_state.coherent_run_hours * math.exp(-dt_eff / max(coherence_decay_hours, 1.0e-6))
+        direction_persistence = _evolve_state_variable(
+            previous_state.direction_persistence,
+            coherence_drive if event_active else 0.0,
+            dt_hours=dt_eff,
+            tau_rise=direction_memory_hours,
+            tau_fall=visibility_off_hours,
         )
-        coherent_run_hours = min(coherent_run_hours, max_coherent_hours)
-        setup_index = _clip01(1.0 - math.exp(-coherent_run_hours / max(relax_hours, 1.0e-6)))
-        persistent_drive = 1.0 - math.exp(-coherent_run_hours / max(merge_min_age_hours, 1.0e-6))
+        drive_slow = _evolve_state_variable(
+            previous_state.drive_slow,
+            event_drive * (0.35 + 0.65 * direction_persistence) if event_active else 0.0,
+            dt_hours=dt_eff,
+            tau_rise=slow_memory_hours,
+            tau_fall=spacing_decay_hours,
+        )
+        decay_memory = _evolve_state_variable(
+            previous_state.decay_memory,
+            0.0 if event_active else 1.0,
+            dt_hours=dt_eff,
+            tau_rise=decay_memory_hours,
+            tau_fall=fast_memory_hours,
+        )
+        event_age_hours = previous_state.event_age_hours + dt_eff if event_active else 0.0
+        decay_age_hours = 0.0 if event_active else previous_state.decay_age_hours + dt_eff
+        coherent_run_hours = event_age_hours
+        setup_index = drive_fast
+        persistent_drive = 1.0 - math.exp(-event_age_hours / max(merge_min_age_hours, 1.0e-6))
 
         onset_l = onset_mode_wavenumber(target_l_cl, lcL, spectrum["l_min"], spectrum["l_max"])
-        cl_response_l = target_l_cl + (onset_l - target_l_cl) * (1.0 - setup_index)
-        activity_target = run_drive * (0.35 + 0.65 * setup_index)
-
+        cl_response_l = target_l_cl + (onset_l - target_l_cl) * (1.0 - drive_fast)
+        activity_target = _clip01(0.35 * run_drive + 0.65 * drive_fast)
         alpha_amp = 1.0 - math.exp(-dt_eff / max(relax_hours / max(0.5 + activity_target, 1.0e-6), 1.0e-6))
         amplitude_index = previous_state.amplitude_index + alpha_amp * (activity_target - previous_state.amplitude_index)
 
@@ -581,16 +711,15 @@ def advance_langmuir_state(
             params=params,
             nl_result=nl_result,
             coherence=coherence,
-            setup_index=setup_index,
-            development_index=previous_state.development_index,
-            coherent_run_hours=coherent_run_hours,
+            setup_index=drive_fast,
+            development_index=max(previous_state.development_index, previous_state.drive_slow),
+            coherent_run_hours=event_age_hours,
             v_float=v_float,
         )
 
         response_target_l = hybrid.response_target_l
-        target_l = hybrid.visible_target_l
         response_bandwidth = hybrid.response_bandwidth
-        response_mix = hybrid.response_mix
+        response_mix = _clip01(hybrid.response_mix * (0.25 + 0.75 * direction_persistence))
         large_scale_fraction = hybrid.large_scale_fraction
 
         spacing_cl = _spacing_from_l(selected_l_cl, params.depth)
@@ -600,49 +729,35 @@ def advance_langmuir_state(
         if not math.isfinite(spacing_response):
             spacing_response = spacing_cl
 
-        supercritical_drive = supercriticality / (supercriticality + 0.45)
+        response_separation = _clip01(max(spacing_response - spacing_cl, 0.0) / max(spacing_response, spacing_cl, 1.0e-12))
         coarsening_target = _clip01(
-            (
-                0.10
-                + 0.30 * response_mix
-                + 0.20 * large_scale_fraction
-                + 0.10 * persistent_drive
-                + 0.30 * supercritical_drive
-            )
-            * (0.25 + 0.75 * setup_index)
+            response_separation
+            * (0.20 + 0.80 * response_mix)
+            * (0.25 + 0.75 * large_scale_fraction)
+            * drive_fast
+            * drive_slow
+            * max(direction_persistence, 0.15)
+            * (0.30 + 0.70 * persistent_drive)
         )
-        coarsen_hours = _coarsening_hours(
-            params,
-            dynamics,
-            response_mix=response_mix,
-            persistent_drive=persistent_drive,
+        coarsening_index = _evolve_state_variable(
+            previous_state.coarsening_index,
+            coarsening_target,
+            dt_hours=dt_eff,
+            tau_rise=slow_memory_hours,
+            tau_fall=spacing_decay_hours,
         )
-        alpha_coarsen = 1.0 - math.exp(-dt_eff / max(coarsen_hours, 1.0e-6))
-        coarsening_index = previous_state.coarsening_index + alpha_coarsen * (
-            coarsening_target - previous_state.coarsening_index
-        )
-        if supercriticality < 0.3:
-            onset_decay = (1.0 - supercriticality / 0.3) * 0.15
-            coarsening_index *= (1.0 - onset_decay * min(dt_eff, 1.0))
-        coarsening_index = _clip01(coarsening_index)
 
         core_spacing_target = spacing_cl + coarsening_index * max(spacing_response - spacing_cl, 0.0)
-        spectrum_spacing = _spacing_from_l(hybrid.visible_target_l, params.depth)
-        if math.isfinite(spectrum_spacing) and spectrum_spacing > 0.0:
-            spectrum_weight = 0.35 * response_mix * setup_index
-            blended_spacing = (1.0 - spectrum_weight) * core_spacing_target + spectrum_weight * spectrum_spacing
-        else:
-            blended_spacing = core_spacing_target
-        target_l = _l_from_spacing(blended_spacing, params.depth)
+        target_l = _l_from_spacing(core_spacing_target, params.depth)
+        spacing_core = _evolve_state_variable(
+            prev_core_spacing,
+            core_spacing_target,
+            dt_hours=dt_eff,
+            tau_rise=spacing_growth_hours,
+            tau_fall=spacing_decay_hours,
+        )
+        selected_l = _l_from_spacing(spacing_core, params.depth)
 
-        visible_relax_hours = max(0.65 * coarsen_hours, 0.20)
-        alpha_visible_scale = 1.0 - math.exp(-dt_eff / max(visible_relax_hours, 1.0e-6))
-        if previous_state.selected_l is None or math.isnan(previous_state.selected_l):
-            selected_l = selected_l_cl
-        else:
-            selected_l = previous_state.selected_l + alpha_visible_scale * (target_l - previous_state.selected_l)
-
-        core_spacing = _spacing_from_l(selected_l, params.depth)
         accum_probe = surface_accumulation_index(
             l=selected_l,
             Ra=Ra,
@@ -652,29 +767,32 @@ def advance_langmuir_state(
             v_float=v_float,
         )
         visibility_target = _clip01(
-            activity_target
-            * (0.65 + 0.35 * coherence)
-            * (0.75 + 0.25 * max(accum_probe["accumulation_factor"], coarsening_index))
+            drive_fast
+            * max(direction_persistence, 0.10)
+            * (0.35 + 0.65 * max(accum_probe["accumulation_factor"], drive_slow))
+            * (1.0 - 0.35 * decay_memory)
         )
-        formation_hours = _formation_hours(
-            params,
-            dynamics,
-            supercriticality=supercriticality,
-            coherence=coherence,
+        visible_fraction = _evolve_state_variable(
+            previous_state.visible_fraction,
+            visibility_target,
+            dt_hours=dt_eff,
+            tau_rise=visibility_on_hours,
+            tau_fall=visibility_off_hours,
         )
-        alpha_form = 1.0 - math.exp(-dt_eff / max(formation_hours, 1.0e-6))
-        visible_fraction = previous_state.visible_fraction + alpha_form * (
-            visibility_target - previous_state.visible_fraction
-        )
-        visible_fraction = _clip01(visible_fraction)
+        spacing_visible = visible_fraction * spacing_core
+        spacing_observable = spacing_visible
+        spacing_nl = spacing_core
 
-        development_target = visible_fraction * (0.25 + 0.75 * coarsening_index)
-        alpha_dev = 1.0 - math.exp(-dt_eff / max(0.75 * relax_hours, 1.0e-6))
-        development_index = previous_state.development_index + alpha_dev * (
-            development_target - previous_state.development_index
+        development_target = visible_fraction * (0.20 + 0.80 * max(coarsening_index, drive_slow))
+        development_index = _evolve_state_variable(
+            previous_state.development_index,
+            development_target,
+            dt_hours=dt_eff,
+            tau_rise=slow_memory_hours,
+            tau_fall=spacing_decay_hours,
         )
 
-        regime = "near_onset" if setup_index < 0.35 or coherent_run_hours < 0.5 * relax_hours else "supercritical"
+        regime = "near_onset" if drive_fast < 0.25 or event_age_hours < 0.25 else "supercritical"
         mode_state = LangmuirModeState(
             selected_l=float(selected_l),
             target_l=float(target_l),
@@ -693,13 +811,23 @@ def advance_langmuir_state(
             large_scale_fraction=float(large_scale_fraction),
             visible_fraction=float(visible_fraction),
             coarsening_index=float(coarsening_index),
+            drive_fast=float(drive_fast),
+            drive_slow=float(drive_slow),
+            direction_persistence=float(direction_persistence),
+            decay_memory=float(decay_memory),
+            event_age_hours=float(event_age_hours),
+            decay_age_hours=float(decay_age_hours),
+            response_separation=float(response_separation),
             buoyancy_Q=buoyancy_Q,
             rho_cell=rho_cell,
             v_float=v_float,
         )
-        spacing_visible = core_spacing
-        spacing_observable = visible_fraction * core_spacing
-        spacing_nl = spacing_visible
+
+    state_saturation_flag = bool(
+        (mode_state.drive_fast > 0.95 and mode_state.drive_slow > 0.95)
+        or mode_state.visible_fraction > 0.95
+        or (mode_state.decay_memory > 0.95 and mode_state.decay_age_hours > 2.0)
+    )
 
     accum_l = (
         mode_state.selected_l
@@ -720,6 +848,7 @@ def advance_langmuir_state(
 
     return {
         "spacing_nonlinear": spacing_nl,
+        "spacing_core": spacing_core,
         "spacing_cl": spacing_cl,
         "spacing_response": spacing_response,
         "spacing_visible": spacing_visible,
@@ -748,6 +877,18 @@ def advance_langmuir_state(
         "large_scale_fraction": float(mode_state.large_scale_fraction),
         "visible_fraction": float(mode_state.visible_fraction),
         "coarsening_index": float(mode_state.coarsening_index),
+        "drive_fast": float(mode_state.drive_fast),
+        "drive_slow": float(mode_state.drive_slow),
+        "direction_persistence": float(mode_state.direction_persistence),
+        "decay_memory": float(mode_state.decay_memory),
+        "event_age_hours": float(mode_state.event_age_hours),
+        "decay_age_hours": float(mode_state.decay_age_hours),
+        "response_separation": float(mode_state.response_separation),
+        "cl_drive_integral": float(hydro.cl_drive_integral),
+        "forcing_depth_fraction": float(hydro.forcing_depth_fraction),
+        "shear_to_drift_ratio": float(hydro.shear_to_drift_ratio),
+        "cancellation_index": float(hydro.cancellation_index),
+        "state_saturation_flag": state_saturation_flag,
         "mode_state": mode_state,
         "kappa": float(nl_result.kappa),
         "wavenumber_ratio": float(nl_result.wavenumber_ratio),

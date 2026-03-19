@@ -1,0 +1,17 @@
+{
+  "tau_relax_alpha": 0.08,
+  "tau_decay_alpha": 0.14,
+  "tau_coherence_alpha": 0.06,
+  "merge_min_age_alpha": 0.04,
+  "merge_supercriticality_threshold": 0.15,
+  "merge_step_factor": 0.85,
+  "coherence_threshold": 0.6,
+  "fast_memory_hours": 0.25,
+  "slow_memory_hours": 2.0,
+  "direction_memory_hours": 1.0,
+  "decay_memory_hours": 0.75,
+  "spacing_growth_hours": 0.5,
+  "spacing_decay_hours": 2.0,
+  "visibility_on_hours": 0.25,
+  "visibility_off_hours": 1.0
+}

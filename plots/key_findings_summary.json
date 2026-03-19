@@ -2,44 +2,44 @@
   "manual": {
     "n_observations": 39,
     "median_observed_spacing_m": 52.64559171,
-    "median_visible_spacing_m": 103.5792262052619,
+    "median_visible_spacing_m": 41.19341219000447,
     "median_linear_spacing_m": 45.17185180495705,
-    "median_observed_over_visible": 0.5043122940872223,
+    "median_observed_over_visible": 1.2902057108575382,
     "median_observed_over_linear": 1.171103066436265,
-    "median_visible_over_linear": 2.2895210382788633,
-    "rmse_visible_m": 63.16602853309363,
+    "median_visible_over_linear": 0.9072945999418045,
+    "rmse_visible_m": 60.53581276682389,
     "rmse_linear_m": 59.63212669227902,
-    "r_squared_visible": -0.37715303325190086,
+    "r_squared_visible": -0.26485229802778965,
     "r_squared_linear": -0.2273704269077086,
-    "development_q90_after_minus_before": 0.001700036405707761,
+    "development_q90_after_minus_before": -0.004737778076181115,
     "strongest_gap_correlation": {
       "variable": "integrated_supercriticality_prev_48h",
-      "pearson_r": 0.37801718576232113
+      "pearson_r": 0.34790498605753933
     }
   },
   "wiggle": {
     "n_observations": 34,
     "median_observed_spacing_m": 126.060378,
-    "median_visible_spacing_m": 103.36005260996777,
+    "median_visible_spacing_m": 41.870842416664104,
     "median_linear_spacing_m": 45.07675010572585,
-    "median_observed_over_visible": 1.2268596015308373,
+    "median_observed_over_visible": 3.131921770269353,
     "median_observed_over_linear": 2.7920989083435326,
-    "median_visible_over_linear": 2.2893295655078605,
-    "rmse_visible_m": 123.31912071526013,
+    "median_visible_over_linear": 0.924133856064305,
+    "rmse_visible_m": 162.17570374119896,
     "rmse_linear_m": 160.27828077006723,
-    "r_squared_visible": -0.34203968459163514,
+    "r_squared_visible": -1.321005136949331,
     "r_squared_linear": -1.267012265942212,
-    "development_q90_after_minus_before": 0.01963985773097271,
+    "development_q90_after_minus_before": 0.0662768404418182,
     "strongest_gap_correlation": {
-      "variable": "development_at_obs",
-      "pearson_r": -0.2864745507213153
+      "variable": "coherent_run_hours_at_obs",
+      "pearson_r": -0.19333127134373262
     }
   },
   "dataset_contrast_effect_sizes": {
     "observed_spacing_m": 1.1234299599149644,
-    "spacing_at_obs_m": -0.47588827776351356,
+    "spacing_at_obs_m": 0.3077390326005856,
     "spacing_linear_at_obs_m": -0.2890595039920076,
-    "gap_ratio_nl": 1.1213291414040245,
+    "gap_ratio_nl": 1.1626774604650094,
     "kappa_at_obs": 0.272318869253161,
     "wavenumber_ratio_at_obs": 0.2792214916727823
   }

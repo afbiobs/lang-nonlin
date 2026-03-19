@@ -16,52 +16,52 @@
       "location": "China",
       "manual_n": 5,
       "wiggle_n": 25,
-      "manual_mean": 0.32980345944631073,
-      "wiggle_mean": 0.34326612843669646,
-      "manual_median": 0.3274464631725737,
-      "wiggle_median": 0.3485681726463194,
-      "mean_diff_wiggle_minus_manual": 0.013462668990385729,
-      "median_diff_wiggle_minus_manual": 0.021121709473745698,
-      "cliffs_delta_wiggle_vs_manual": 0.28,
-      "cohens_d_wiggle_vs_manual": 0.3614553649734003,
-      "auc_wiggle_gt_manual": 0.64,
-      "mannwhitney_pvalue": 0.34338200229284177,
-      "ks_pvalue": 0.45422648870924737,
-      "mannwhitney_qvalue": 0.40463874310738035
+      "manual_mean": 0.051634081009072706,
+      "wiggle_mean": 0.07588092516494944,
+      "manual_median": 0.0487855857261061,
+      "wiggle_median": 0.073373808767873,
+      "mean_diff_wiggle_minus_manual": 0.02424684415587674,
+      "median_diff_wiggle_minus_manual": 0.024588223041766902,
+      "cliffs_delta_wiggle_vs_manual": 0.168,
+      "cohens_d_wiggle_vs_manual": 0.41633100075096907,
+      "auc_wiggle_gt_manual": 0.584,
+      "mannwhitney_pvalue": 0.5772846905615634,
+      "ks_pvalue": 0.3326175739968843,
+      "mannwhitney_qvalue": 0.5772846905615634
     },
     {
       "location": "Ireland",
       "manual_n": 25,
       "wiggle_n": 2,
-      "manual_mean": 0.3515378566698065,
-      "wiggle_mean": 0.324754305832223,
-      "manual_median": 0.3468636189114661,
-      "wiggle_median": 0.324754305832223,
-      "mean_diff_wiggle_minus_manual": -0.026783550837583547,
-      "median_diff_wiggle_minus_manual": -0.02210931307924313,
+      "manual_mean": 0.1176096660245649,
+      "wiggle_mean": 0.0439375264322521,
+      "manual_median": 0.0894296561288359,
+      "wiggle_median": 0.0439375264322521,
+      "mean_diff_wiggle_minus_manual": -0.0736721395923128,
+      "median_diff_wiggle_minus_manual": -0.0454921296965838,
       "cliffs_delta_wiggle_vs_manual": -0.38,
-      "cohens_d_wiggle_vs_manual": -0.8133680610520979,
+      "cohens_d_wiggle_vs_manual": -0.7943652442425947,
       "auc_wiggle_gt_manual": 0.31,
       "mannwhitney_pvalue": 0.40463874310738035,
-      "ks_pvalue": 0.37606837606837606,
-      "mannwhitney_qvalue": 0.40463874310738035
+      "ks_pvalue": 0.44444444444444453,
+      "mannwhitney_qvalue": 0.5772846905615634
     },
     {
       "location": "America",
       "manual_n": 9,
       "wiggle_n": 7,
-      "manual_mean": 0.3164697671116567,
-      "wiggle_mean": 0.3258728402591718,
-      "manual_median": 0.3202479445188777,
-      "wiggle_median": 0.3250006518557541,
-      "mean_diff_wiggle_minus_manual": 0.009403073147515095,
-      "median_diff_wiggle_minus_manual": 0.004752707336876383,
-      "cliffs_delta_wiggle_vs_manual": 0.2857142857142857,
-      "cohens_d_wiggle_vs_manual": 0.4767543990209429,
-      "auc_wiggle_gt_manual": 0.6428571428571429,
-      "mannwhitney_pvalue": 0.36790863821094355,
-      "ks_pvalue": 0.4987762237762238,
-      "mannwhitney_qvalue": 0.40463874310738035
+      "manual_mean": 0.05783856069559875,
+      "wiggle_mean": 0.03617212399771077,
+      "manual_median": 0.0538702475707889,
+      "wiggle_median": 0.0242338329181745,
+      "mean_diff_wiggle_minus_manual": -0.02166643669788798,
+      "median_diff_wiggle_minus_manual": -0.0296364146526144,
+      "cliffs_delta_wiggle_vs_manual": -0.4126984126984127,
+      "cohens_d_wiggle_vs_manual": -0.7409695330566802,
+      "auc_wiggle_gt_manual": 0.29365079365079366,
+      "mannwhitney_pvalue": 0.18546509311703674,
+      "ks_pvalue": 0.21765734265734266,
+      "mannwhitney_qvalue": 0.5563952793511102
     }
   ],
   "top_weather_signals_by_location": {
@@ -72,7 +72,7 @@
         "mean_diff_wiggle_minus_manual": -0.07861140548744605,
         "cliffs_delta_wiggle_vs_manual": -0.456,
         "mannwhitney_pvalue": 0.11861936819927167,
-        "mannwhitney_qvalue": 0.7948422344182267
+        "mannwhitney_qvalue": 0.738067789102639
       },
       {
         "variable": "turning_mean_prev_48h_deg",
@@ -80,7 +80,7 @@
         "mean_diff_wiggle_minus_manual": 1.0514285714285716,
         "cliffs_delta_wiggle_vs_manual": 0.36,
         "mannwhitney_pvalue": 0.22007882999913864,
-        "mannwhitney_qvalue": 0.7948422344182267
+        "mannwhitney_qvalue": 0.738067789102639
       },
       {
         "variable": "turning_total_prev_48h_deg",
@@ -88,7 +88,7 @@
         "mean_diff_wiggle_minus_manual": 51.51999999999998,
         "cliffs_delta_wiggle_vs_manual": 0.36,
         "mannwhitney_pvalue": 0.22007882999913864,
-        "mannwhitney_qvalue": 0.7948422344182267
+        "mannwhitney_qvalue": 0.738067789102639
       },
       {
         "variable": "coherence_mean_prev_48h",
@@ -96,7 +96,7 @@
         "mean_diff_wiggle_minus_manual": -0.0037879210103258787,
         "cliffs_delta_wiggle_vs_manual": -0.328,
         "mannwhitney_pvalue": 0.26497444571196416,
-        "mannwhitney_qvalue": 0.7948422344182267
+        "mannwhitney_qvalue": 0.738067789102639
       },
       {
         "variable": "La_t_mean_prev_48h",
@@ -104,7 +104,7 @@
         "mean_diff_wiggle_minus_manual": 0.005832357583036463,
         "cliffs_delta_wiggle_vs_manual": 0.264,
         "mannwhitney_pvalue": 0.3725170281957161,
-        "mannwhitney_qvalue": 0.7948422344182267
+        "mannwhitney_qvalue": 0.738067789102639
       }
     ],
     "Ireland": [
@@ -114,7 +114,7 @@
         "mean_diff_wiggle_minus_manual": -0.2128866710226628,
         "cliffs_delta_wiggle_vs_manual": -0.78,
         "mannwhitney_pvalue": 0.07852202940081898,
-        "mannwhitney_qvalue": 0.8412651399168632
+        "mannwhitney_qvalue": 0.7811747727799444
       },
       {
         "variable": "wind_std_prev_48h",
@@ -122,7 +122,7 @@
         "mean_diff_wiggle_minus_manual": 0.4923545580693389,
         "cliffs_delta_wiggle_vs_manual": 0.58,
         "mannwhitney_pvalue": 0.19485630387324704,
-        "mannwhitney_qvalue": 0.8412651399168632
+        "mannwhitney_qvalue": 0.7811747727799444
       },
       {
         "variable": "wind_max_prev_48h",
@@ -130,7 +130,7 @@
         "mean_diff_wiggle_minus_manual": 0.8103999999999996,
         "cliffs_delta_wiggle_vs_manual": 0.34,
         "mannwhitney_pvalue": 0.4588334243712969,
-        "mannwhitney_qvalue": 0.8412651399168632
+        "mannwhitney_qvalue": 0.7811747727799444
       },
       {
         "variable": "coherence_mean_prev_48h",
@@ -138,7 +138,7 @@
         "mean_diff_wiggle_minus_manual": 0.003428787352603768,
         "cliffs_delta_wiggle_vs_manual": -0.34,
         "mannwhitney_pvalue": 0.4588334243712969,
-        "mannwhitney_qvalue": 0.8412651399168632
+        "mannwhitney_qvalue": 0.7811747727799444
       },
       {
         "variable": "La_t_mean_prev_48h",
@@ -146,7 +146,7 @@
         "mean_diff_wiggle_minus_manual": 0.0036117481283076125,
         "cliffs_delta_wiggle_vs_manual": 0.26,
         "mannwhitney_pvalue": 0.5785001530280085,
-        "mannwhitney_qvalue": 0.8412651399168632
+        "mannwhitney_qvalue": 0.7811747727799444
       }
     ],
     "America": [
@@ -183,11 +183,11 @@
         "mannwhitney_qvalue": 0.7655008916769066
       },
       {
-        "variable": "wind_max_prev_48h",
-        "label": "Max wind\nprevious 48 h (m/s)",
-        "mean_diff_wiggle_minus_manual": -0.337936507936508,
-        "cliffs_delta_wiggle_vs_manual": -0.15873015873015872,
-        "mannwhitney_pvalue": 0.6335891938021503,
+        "variable": "hours_supercritical_prev_48h",
+        "label": "Supercritical hours\nprevious 48 h",
+        "mean_diff_wiggle_minus_manual": -4.444444444444443,
+        "cliffs_delta_wiggle_vs_manual": -0.20634920634920634,
+        "mannwhitney_pvalue": 0.5238283445248568,
         "mannwhitney_qvalue": 0.7655008916769066
       }
     ]
@@ -195,152 +195,152 @@
   "regression_summary": {
     "China": {
       "manual:wind_mean_prev_48h": {
-        "slope": -0.005996172081873302,
-        "intercept": 0.34906854849107555,
-        "r2": 0.02970521105375179,
-        "r": -0.17235199753339614
+        "slope": 0.008494291444306228,
+        "intercept": 0.024342789362949896,
+        "r2": 0.11896345287248578,
+        "r": 0.3449107897304545
       },
       "wiggle:wind_mean_prev_48h": {
-        "slope": 0.0207533559778162,
-        "intercept": 0.27808619037853227,
-        "r2": 0.20185935623810247,
-        "r": 0.44928760970908416
+        "slope": 0.03574225626822691,
+        "intercept": -0.03637456026653042,
+        "r2": 0.22568694614249452,
+        "r": 0.47506520199073154
       },
       "manual:wind_std_prev_48h": {
-        "slope": -0.07575289264272324,
-        "intercept": 0.39303831908269415,
-        "r2": 0.7069845595602935,
-        "r": -0.8408237386993151
+        "slope": -0.023396643633908865,
+        "intercept": 0.07116447020662407,
+        "r2": 0.13458398576286357,
+        "r": -0.36685690093395196
       },
       "wiggle:wind_std_prev_48h": {
-        "slope": 0.034143918498956025,
-        "intercept": 0.3121862992309367,
-        "r2": 0.0688586811863715,
-        "r": 0.2624093770930669
+        "slope": 0.13502004226300177,
+        "intercept": -0.047022362956971125,
+        "r2": 0.4058810320867463,
+        "r": 0.6370879312047484
       },
       "manual:wind_steadiness_prev_48h": {
-        "slope": 0.06900448162412147,
-        "intercept": 0.26752294846211655,
-        "r2": 0.0845635714028038,
-        "r": 0.29079816265376196
+        "slope": 0.03477810940935741,
+        "intercept": 0.02024483825122501,
+        "r2": 0.04286624469548361,
+        "r": 0.20704164966374158
       },
       "wiggle:wind_steadiness_prev_48h": {
-        "slope": 0.09439254147737959,
-        "intercept": 0.2654917645040985,
-        "r2": 0.16752335386513362,
-        "r": 0.4092961688864601
+        "slope": -0.001877328330978673,
+        "intercept": 0.07742774247222048,
+        "r2": 2.4977603487963407e-05,
+        "r": -0.004997759846980609
       },
       "manual:hours_supercritical_prev_48h": {
-        "slope": 0.0,
-        "intercept": 0.32980345944631073,
-        "r2": 0.0,
-        "r": NaN
+        "slope": 0.0007183165599631313,
+        "intercept": 0.03827339299375844,
+        "r2": 0.19674068974404557,
+        "r": 0.4435546073980584
       },
       "wiggle:hours_supercritical_prev_48h": {
-        "slope": 0.0,
-        "intercept": 0.34326612843669646,
-        "r2": 0.0,
-        "r": NaN
+        "slope": 0.002549791440596087,
+        "intercept": 0.034268328854421305,
+        "r2": 0.2647953126180397,
+        "r": 0.5145826586837529
       }
     },
     "Ireland": {
       "manual:wind_mean_prev_48h": {
-        "slope": 0.01797848848908976,
-        "intercept": 0.275142195750253,
-        "r2": 0.44430833834304284,
-        "r": 0.6665645792742388
+        "slope": 0.05397421648751882,
+        "intercept": -0.11174198073268878,
+        "r2": 0.5029274688374845,
+        "r": 0.7091737931124391
       },
       "wiggle:wind_mean_prev_48h": {
-        "slope": 0.020204315222919586,
-        "intercept": 0.24773463153652595,
+        "slope": 0.03294877326248025,
+        "intercept": -0.08166454209221094,
         "r2": 1.0,
         "r": 1.0
       },
       "manual:wind_std_prev_48h": {
-        "slope": -0.014920414552214547,
-        "intercept": 0.3712992436277316,
-        "r2": 0.05023922372101042,
-        "r": -0.22414107994968435
+        "slope": -0.034094866265769345,
+        "intercept": 0.16276671197652046,
+        "r2": 0.03294683305851043,
+        "r": -0.18151262506644175
       },
       "wiggle:wind_std_prev_48h": {
-        "slope": -0.06748219736412223,
-        "intercept": 0.4473564681624438,
+        "slope": -0.11004855129572232,
+        "intercept": 0.24387455985993173,
         "r2": 1.0,
         "r": -1.0
       },
       "manual:wind_steadiness_prev_48h": {
-        "slope": 0.0857600603350916,
-        "intercept": 0.2797951456547922,
-        "r2": 0.20583584339583283,
-        "r": 0.45369135256893844
+        "slope": 0.18702946339355128,
+        "intercept": -0.038850120630299786,
+        "r2": 0.12294912868332708,
+        "r": 0.3506410253854038
       },
       "wiggle:wind_steadiness_prev_48h": {
-        "slope": 0.0734096156557301,
-        "intercept": 0.2789713070992732,
+        "slope": 0.11971486065425518,
+        "intercept": -0.030724427110086137,
         "r2": 1.0,
         "r": 1.0
       },
       "manual:hours_supercritical_prev_48h": {
-        "slope": 0.0,
-        "intercept": 0.3515378566698065,
-        "r2": 0.0,
-        "r": NaN
+        "slope": 0.004251580499192258,
+        "intercept": -0.008917369631396697,
+        "r2": 0.5080680351228348,
+        "r": 0.7127889134399013
       },
       "wiggle:hours_supercritical_prev_48h": {
-        "slope": 0.0,
-        "intercept": 0.324754305832223,
-        "r2": 0.0,
-        "r": NaN
+        "slope": 0.0015876676458678113,
+        "intercept": 0.0058335029314246336,
+        "r2": 1.0,
+        "r": 1.0
       }
     },
     "America": {
       "manual:wind_mean_prev_48h": {
-        "slope": -0.005569638618965411,
-        "intercept": 0.3383982300171831,
-        "r2": 0.07887999482584063,
-        "r": -0.28085582569325557
+        "slope": 0.003356355873379608,
+        "intercept": 0.044624108142692714,
+        "r2": 0.01677504966917731,
+        "r": 0.12951853021547594
       },
       "wiggle:wind_mean_prev_48h": {
-        "slope": -0.00013650075384865097,
-        "intercept": 0.32637023627143186,
-        "r2": 0.00039582482146416353,
-        "r": -0.019895346728972904
+        "slope": 0.011311251782565339,
+        "intercept": -0.005045022220823085,
+        "r2": 0.4044434259260663,
+        "r": 0.6359586668377641
       },
       "manual:wind_std_prev_48h": {
-        "slope": -0.001536616614057129,
-        "intercept": 0.31860352704001277,
-        "r2": 0.0008608051102232395,
-        "r": -0.029339480401374768
+        "slope": 0.0007890179116336898,
+        "intercept": 0.056742923184460524,
+        "r2": 0.0001329114765072914,
+        "r": 0.011528723975675101
       },
       "wiggle:wind_std_prev_48h": {
-        "slope": 0.008129671057110602,
-        "intercept": 0.3160969483208612,
-        "r2": 0.12420887874638997,
-        "r": 0.35243280032708524
+        "slope": 0.013138263677386183,
+        "intercept": 0.02037342254166386,
+        "r2": 0.0482709846674062,
+        "r": 0.21970658767412152
       },
       "manual:wind_steadiness_prev_48h": {
-        "slope": -0.01667163726871724,
-        "intercept": 0.3277164917204303,
-        "r2": 0.018733637645389933,
-        "r": -0.1368708794645171
+        "slope": 0.07083024609706355,
+        "intercept": 0.010056314777850453,
+        "r2": 0.19802411560031485,
+        "r": 0.44499900629137934
       },
       "wiggle:wind_steadiness_prev_48h": {
-        "slope": -0.012095087054937477,
-        "intercept": 0.3318772278341187,
-        "r2": 0.09575659546440918,
-        "r": -0.309445626022422
+        "slope": 0.07901032293136355,
+        "intercept": -0.0030511241812239223,
+        "r2": 0.6080256345529496,
+        "r": 0.7797599852217023
       },
       "manual:hours_supercritical_prev_48h": {
-        "slope": 0.0,
-        "intercept": 0.3164697671116567,
-        "r2": 0.0,
-        "r": NaN
+        "slope": 0.0008054136380864376,
+        "intercept": 0.035734430850337645,
+        "r2": 0.12944867634291846,
+        "r": 0.359789766867984
       },
       "wiggle:hours_supercritical_prev_48h": {
-        "slope": 0.003118521708860513,
-        "intercept": 0.1735107796262723,
-        "r2": 0.015646490852181172,
-        "r": 0.12508593387020447
+        "slope": 0.0009626870647916349,
+        "intercept": 0.01403032150750317,
+        "r2": 0.5114779623492891,
+        "r": 0.7151768748703283
       }
     }
   }

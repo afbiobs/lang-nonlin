@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plot the visible / CL / response spacing decomposition."""
+"""Plot the visible / core / CL / response spacing decomposition."""
 
 from __future__ import annotations
 
@@ -31,6 +31,12 @@ COMPONENTS = {
         "timeline_column": "predicted_spacing_visible_m",
         "color": "#d97706",
         "label": "Visible",
+    },
+    "core": {
+        "column": "spacing_core_at_obs_m",
+        "timeline_column": "predicted_core_spacing_m",
+        "color": "#264653",
+        "label": "Core",
     },
     "cl": {
         "column": "spacing_cl_at_obs_m",
@@ -124,7 +130,7 @@ def plot_ranked_components(bundles: list[DatasetBundle]) -> None:
             markersize=3,
             label="Observed",
         )
-        for component_name in ("visible", "cl", "response", "linear"):
+        for component_name in ("visible", "core", "cl", "response", "linear"):
             spec = COMPONENTS[component_name]
             if spec["column"] not in ordered.columns:
                 continue
@@ -132,8 +138,8 @@ def plot_ranked_components(bundles: list[DatasetBundle]) -> None:
                 x,
                 ordered[spec["column"]],
                 color=spec["color"],
-                linewidth=2.0 if component_name == "visible" else 1.6,
-                linestyle="-" if component_name == "visible" else "--",
+                linewidth=2.0 if component_name in {"visible", "core"} else 1.6,
+                linestyle="-" if component_name in {"visible", "core"} else "--",
                 label=spec["label"],
             )
         ax.set_yscale("log")
@@ -146,7 +152,7 @@ def plot_ranked_components(bundles: list[DatasetBundle]) -> None:
 
 def plot_skill_comparison(skill: pd.DataFrame) -> None:
     fig, axes = plt.subplots(1, 2, figsize=(14.5, 5.8), constrained_layout=True)
-    order = ["Visible", "CL", "Response", "Linear"]
+    order = ["Visible", "Core", "CL", "Response", "Linear"]
     palette = {"manual": "#1d3557", "wiggle": "#d97706"}
 
     sns.barplot(
@@ -199,7 +205,7 @@ def plot_ratio_distributions(bundles: list[DatasetBundle]) -> None:
             data=subset,
             x="component",
             y="ratio",
-            order=["Visible", "CL", "Response", "Linear"],
+            order=["Visible", "Core", "CL", "Response", "Linear"],
             hue="component",
             palette={spec["label"]: spec["color"] for spec in COMPONENTS.values()},
             ax=ax,
@@ -238,10 +244,17 @@ def plot_example_timelines(bundle: DatasetBundle) -> None:
         )
         ax.plot(
             timeline["hours_from_observation"],
-            timeline["predicted_spacing_NL_m"],
+            timeline["predicted_spacing_visible_m"],
             color=COMPONENTS["visible"]["color"],
             linewidth=2.4,
             label="Visible",
+        )
+        ax.plot(
+            timeline["hours_from_observation"],
+            timeline["predicted_core_spacing_m"],
+            color=COMPONENTS["core"]["color"],
+            linewidth=2.0,
+            label="Core",
         )
         for component_name in ("cl", "response", "linear"):
             spec = COMPONENTS[component_name]
@@ -275,6 +288,7 @@ def build_summary(bundles: list[DatasetBundle], skill: pd.DataFrame) -> dict[str
             "n_observations": int(len(bundle.diagnostics)),
             "median_observed_spacing_m": float(bundle.diagnostics["observed_spacing_m"].median()),
             "median_visible_spacing_m": float(bundle.diagnostics["spacing_visible_at_obs_m"].median()),
+            "median_core_spacing_m": float(bundle.diagnostics["spacing_core_at_obs_m"].median()),
             "median_cl_spacing_m": float(bundle.diagnostics["spacing_cl_at_obs_m"].median()),
             "median_response_spacing_m": float(bundle.diagnostics["spacing_response_at_obs_m"].median()),
             "median_linear_spacing_m": float(bundle.diagnostics["spacing_linear_at_obs_m"].median()),

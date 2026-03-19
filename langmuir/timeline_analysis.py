@@ -107,6 +107,43 @@ def _safe_sum(series: pd.Series) -> float:
     return float(series.sum()) if len(series) > 0 else 0.0
 
 
+def _classify_mismatch(summary: dict) -> str:
+    observed = float(summary.get("observed_spacing_m", float("nan")))
+    predicted = float(summary.get("spacing_at_obs_m", float("nan")))
+    core = float(summary.get("spacing_core_at_obs_m", float("nan")))
+    spacing_cl = float(summary.get("spacing_cl_at_obs_m", float("nan")))
+    spacing_response = float(summary.get("spacing_response_at_obs_m", float("nan")))
+    visibility = float(summary.get("visibility_at_obs", float("nan")))
+    cancellation = float(summary.get("cancellation_index_at_obs", float("nan")))
+    response_separation = float(summary.get("response_separation_at_obs", float("nan")))
+    saturation_fraction = float(summary.get("state_saturated_fraction_prev_48h", float("nan")))
+    spacing_range = float(summary.get("spacing_range_prev_48h_m", float("nan")))
+    coarsening = float(summary.get("coarsening_index_at_obs", float("nan")))
+
+    if not math.isfinite(observed) or not math.isfinite(predicted):
+        return "physics_failure"
+    if math.isfinite(cancellation) and math.isfinite(response_separation):
+        if cancellation < 0.20 and response_separation < 0.25 and observed > 1.20 * predicted:
+            return "under-responsive-hydro"
+    if math.isfinite(saturation_fraction) and math.isfinite(spacing_range):
+        if saturation_fraction > 0.70 and spacing_range < max(10.0, 0.15 * max(observed, 1.0)):
+            return "saturated-lifecycle"
+    if math.isfinite(visibility) and math.isfinite(core):
+        if visibility < 0.35 and core > 0.75 * observed:
+            return "visibility-limited"
+    if math.isfinite(spacing_response) and math.isfinite(response_separation):
+        if spacing_response > 1.35 * observed and response_separation > 0.35 and coarsening > 0.65:
+            return "response-overreach"
+
+    envelope_terms = [value for value in (spacing_cl, core, spacing_response) if math.isfinite(value) and value > 0.0]
+    if envelope_terms:
+        lower = min(envelope_terms)
+        upper = max(envelope_terms)
+        if observed < 0.80 * lower or observed > 1.25 * upper:
+            return "observation-outside-envelope"
+    return "envelope_match"
+
+
 def predict_observation_timeline(
     observation_row: pd.Series,
     obs_weather: dict,
@@ -204,10 +241,12 @@ def predict_observation_timeline(
                 0.0,
             ) if not math.isnan(result.get("RcNL", float("nan"))) else float("nan"),
             "predicted_spacing_NL_m": result["spacing_nonlinear"],
+            "predicted_core_spacing_m": result.get("spacing_core", float("nan")),
             "predicted_spacing_CL_m": result.get("spacing_cl", float("nan")),
             "predicted_spacing_response_m": result.get("spacing_response", float("nan")),
             "predicted_spacing_visible_m": result.get("spacing_visible", result["spacing_nonlinear"]),
             "predicted_spacing_observable_m": result.get("spacing_observable", float("nan")),
+            "predicted_visibility_index": result.get("visible_fraction", float("nan")),
             "predicted_spacing_L_m": result["spacing_linear"],
             "selected_l": result["selected_l"],
             "target_l": result["target_l"],
@@ -231,6 +270,18 @@ def predict_observation_timeline(
             "large_scale_fraction": result.get("large_scale_fraction", float("nan")),
             "visible_fraction": result.get("visible_fraction", float("nan")),
             "coarsening_index": result.get("coarsening_index", float("nan")),
+            "drive_fast": result.get("drive_fast", float("nan")),
+            "drive_slow": result.get("drive_slow", float("nan")),
+            "direction_persistence": result.get("direction_persistence", float("nan")),
+            "decay_memory": result.get("decay_memory", float("nan")),
+            "event_age_hours": result.get("event_age_hours", float("nan")),
+            "decay_age_hours": result.get("decay_age_hours", float("nan")),
+            "response_separation": result.get("response_separation", float("nan")),
+            "cl_drive_integral": result.get("cl_drive_integral", float("nan")),
+            "forcing_depth_fraction": result.get("forcing_depth_fraction", float("nan")),
+            "shear_to_drift_ratio": result.get("shear_to_drift_ratio", float("nan")),
+            "cancellation_index": result.get("cancellation_index", float("nan")),
+            "state_saturation_flag": bool(result.get("state_saturation_flag", False)),
             "regime": result["regime"],
             "hydrodynamic_regime": result.get("hydrodynamic_regime", result["regime"]),
             "is_visible": result["is_visible"],
@@ -303,6 +354,9 @@ def summarise_observation_timeline(
         "timeline_start_utc": str(df.index.min()),
         "timeline_end_utc": str(df.index.max()),
         "spacing_at_obs_m": float(obs_row["predicted_spacing_NL_m"]),
+        "spacing_core_at_obs_m": float(obs_row["predicted_core_spacing_m"])
+        if "predicted_core_spacing_m" in obs_row
+        else float("nan"),
         "spacing_cl_at_obs_m": float(obs_row["predicted_spacing_CL_m"])
         if "predicted_spacing_CL_m" in obs_row
         else float("nan"),
@@ -315,6 +369,9 @@ def summarise_observation_timeline(
         "spacing_observable_at_obs_m": float(obs_row["predicted_spacing_observable_m"])
         if "predicted_spacing_observable_m" in obs_row
         else float("nan"),
+        "visibility_at_obs": float(obs_row["predicted_visibility_index"])
+        if "predicted_visibility_index" in obs_row
+        else float("nan"),
         "spacing_linear_at_obs_m": float(obs_row["predicted_spacing_L_m"]),
         "Ra_at_obs": float(obs_row["Ra"]),
         "kappa_at_obs": float(obs_row["kappa"]) if "kappa" in obs_row else float("nan"),
@@ -326,6 +383,9 @@ def summarise_observation_timeline(
         if "hydrodynamic_regime" in obs_row
         else "",
         "spacing_mean_prev_48h_m": _safe_mean(pre_df["predicted_spacing_NL_m"]),
+        "spacing_core_mean_prev_48h_m": _safe_mean(pre_df["predicted_core_spacing_m"])
+        if "predicted_core_spacing_m" in pre_df
+        else float("nan"),
         "spacing_cl_mean_prev_48h_m": _safe_mean(pre_df["predicted_spacing_CL_m"])
         if "predicted_spacing_CL_m" in pre_df
         else float("nan"),
@@ -335,8 +395,19 @@ def summarise_observation_timeline(
         "spacing_observable_mean_prev_48h_m": _safe_mean(pre_df["predicted_spacing_observable_m"])
         if "predicted_spacing_observable_m" in pre_df
         else float("nan"),
+        "visibility_mean_prev_48h": _safe_mean(pre_df["predicted_visibility_index"])
+        if "predicted_visibility_index" in pre_df
+        else float("nan"),
         "spacing_std_prev_48h_m": _safe_std(pre_df["predicted_spacing_NL_m"]),
         "spacing_range_prev_48h_m": _safe_max(pre_df["predicted_spacing_NL_m"]) - _safe_min(pre_df["predicted_spacing_NL_m"]),
+        "core_spacing_std_prev_48h_m": _safe_std(pre_df["predicted_core_spacing_m"])
+        if "predicted_core_spacing_m" in pre_df
+        else float("nan"),
+        "core_spacing_range_prev_48h_m": (
+            _safe_max(pre_df["predicted_core_spacing_m"]) - _safe_min(pre_df["predicted_core_spacing_m"])
+            if "predicted_core_spacing_m" in pre_df
+            else float("nan")
+        ),
         "spacing_mean_post_48h_m": _safe_mean(post_df["predicted_spacing_NL_m"]),
         "wind_mean_prev_48h": _safe_mean(pre_df["U10"]),
         "wind_max_prev_48h": _safe_max(pre_df["U10"]),
@@ -414,6 +485,43 @@ def summarise_observation_timeline(
         "coarsening_index_mean_prev_48h": _safe_mean(pre_df["coarsening_index"])
         if "coarsening_index" in pre_df
         else float("nan"),
+        "drive_fast_at_obs": float(obs_row["drive_fast"]) if "drive_fast" in obs_row else float("nan"),
+        "drive_fast_mean_prev_48h": _safe_mean(pre_df["drive_fast"]) if "drive_fast" in pre_df else float("nan"),
+        "drive_slow_at_obs": float(obs_row["drive_slow"]) if "drive_slow" in obs_row else float("nan"),
+        "drive_slow_mean_prev_48h": _safe_mean(pre_df["drive_slow"]) if "drive_slow" in pre_df else float("nan"),
+        "direction_persistence_at_obs": float(obs_row["direction_persistence"])
+        if "direction_persistence" in obs_row
+        else float("nan"),
+        "direction_persistence_mean_prev_48h": _safe_mean(pre_df["direction_persistence"])
+        if "direction_persistence" in pre_df
+        else float("nan"),
+        "decay_memory_at_obs": float(obs_row["decay_memory"]) if "decay_memory" in obs_row else float("nan"),
+        "event_age_at_obs_h": float(obs_row["event_age_hours"]) if "event_age_hours" in obs_row else float("nan"),
+        "decay_age_at_obs_h": float(obs_row["decay_age_hours"]) if "decay_age_hours" in obs_row else float("nan"),
+        "response_separation_at_obs": float(obs_row["response_separation"])
+        if "response_separation" in obs_row
+        else float("nan"),
+        "cancellation_index_at_obs": float(obs_row["cancellation_index"])
+        if "cancellation_index" in obs_row
+        else float("nan"),
+        "cancellation_index_mean_prev_48h": _safe_mean(pre_df["cancellation_index"])
+        if "cancellation_index" in pre_df
+        else float("nan"),
+        "cl_drive_integral_at_obs": float(obs_row["cl_drive_integral"])
+        if "cl_drive_integral" in obs_row
+        else float("nan"),
+        "forcing_depth_fraction_at_obs": float(obs_row["forcing_depth_fraction"])
+        if "forcing_depth_fraction" in obs_row
+        else float("nan"),
+        "shear_to_drift_ratio_at_obs": float(obs_row["shear_to_drift_ratio"])
+        if "shear_to_drift_ratio" in obs_row
+        else float("nan"),
+        "state_saturated_fraction_prev_48h": float(pre_df["state_saturation_flag"].mean())
+        if "state_saturation_flag" in pre_df and len(pre_df) > 0
+        else float("nan"),
+        "state_saturated_at_obs": bool(obs_row["state_saturation_flag"])
+        if "state_saturation_flag" in obs_row
+        else False,
         "unstable_band_width_mean_prev_48h": _safe_mean(pre_df["unstable_band_width"]),
         "peak_growth_mean_prev_48h": _safe_mean(pre_df["peak_growth_proxy"]),
         "wind_regime": classify_wind_regime(
@@ -424,6 +532,7 @@ def summarise_observation_timeline(
             post_context if post_context else {"wind_mean": float("nan"), "wind_std": float("nan")},
         ) if pre_context and post_context else "",
     }
+    summary["mismatch_class"] = _classify_mismatch(summary)
     return summary
 
 
@@ -500,12 +609,22 @@ def fit_interpretable_diagnostic_model(
         ],
         "model_structure": [
             "spacing_at_obs_m",
+            "spacing_core_at_obs_m",
             "spacing_mean_prev_48h_m",
             "amplitude_at_obs",
             "development_at_obs",
             "setup_at_obs",
             "coherent_run_hours_at_obs",
             "unstable_band_width_mean_prev_48h",
+        ],
+        "responsiveness_diagnostics": [
+            "visibility_at_obs",
+            "drive_fast_at_obs",
+            "drive_slow_at_obs",
+            "direction_persistence_at_obs",
+            "response_separation_at_obs",
+            "cancellation_index_at_obs",
+            "state_saturated_fraction_prev_48h",
         ],
     }
     feature_families["combined"] = sorted(

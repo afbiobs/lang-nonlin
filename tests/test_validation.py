@@ -27,5 +27,7 @@ def test_consistency_envelope_exposes_cl_and_response_spacing() -> None:
     envelope = nonlinear_consistency_envelope(depths=[9.0], use_lake_profile=True)
     depth_report = envelope[9.0]
     assert "spacing_CL" in depth_report
+    assert "spacing_core" in depth_report
     assert "spacing_response" in depth_report
+    assert "visibility_index" in depth_report
     assert len(depth_report["spacing_NL"]) == len(depth_report["spacing_response"])

@@ -1,33 +1,41 @@
 {
   "manual": {
-    "source_dir": "/home/op/PROJECTS/lang-nonlin/outputs/2026-03-19_manual_validation_timeline_v5",
+    "source_dir": "/home/op/PROJECTS/lang-nonlin/outputs/2026-03-19_manual_validation_timeline_v8",
     "n_observations": 39,
     "median_observed_spacing_m": 52.64559171,
-    "median_visible_spacing_m": 103.5792262052619,
-    "median_cl_spacing_m": 20.254134343672305,
-    "median_response_spacing_m": 126.67418565000008,
+    "median_visible_spacing_m": 6.11824049539736,
+    "median_core_spacing_m": 41.19341219000447,
+    "median_cl_spacing_m": 39.42765388265656,
+    "median_response_spacing_m": 113.09525766696588,
     "median_linear_spacing_m": 45.17185180495705,
     "component_skill": {
       "Visible": {
         "dataset": "manual",
-        "rmse": 63.16602853309363,
-        "bias": 32.72807861204182,
-        "capture_rate": 0.48717948717948717,
-        "median_ratio": 0.5043122940872223
+        "rmse": 83.64440815135265,
+        "bias": -62.686059862562175,
+        "capture_rate": 0.02564102564102564,
+        "median_ratio": 9.772669490003254
+      },
+      "Core": {
+        "dataset": "manual",
+        "rmse": 60.53581276682389,
+        "bias": -29.550703401826286,
+        "capture_rate": 0.8461538461538461,
+        "median_ratio": 1.2902057108575382
       },
       "CL": {
         "dataset": "manual",
-        "rmse": 73.71006359721312,
-        "bias": -50.27314260031478,
-        "capture_rate": 0.15384615384615385,
-        "median_ratio": 2.5903977502132167
+        "rmse": 61.60715153830812,
+        "bias": -32.515578329944105,
+        "capture_rate": 0.7948717948717948,
+        "median_ratio": 1.4656395944522287
       },
       "Response": {
         "dataset": "manual",
-        "rmse": 77.43260107101054,
-        "bias": 55.695370416574164,
-        "capture_rate": 0.358974358974359,
-        "median_ratio": 0.41929922743487685
+        "rmse": 68.26103269827563,
+        "bias": 41.98831809879774,
+        "capture_rate": 0.38461538461538464,
+        "median_ratio": 0.47049224718517013
       },
       "Linear": {
         "dataset": "manual",
@@ -39,34 +47,42 @@
     }
   },
   "wiggle": {
-    "source_dir": "/home/op/PROJECTS/lang-nonlin/outputs/2026-03-19_wiggle_validation_timeline_v5",
+    "source_dir": "/home/op/PROJECTS/lang-nonlin/outputs/2026-03-19_wiggle_validation_timeline_v8",
     "n_observations": 34,
     "median_observed_spacing_m": 126.060378,
-    "median_visible_spacing_m": 103.36005260996777,
-    "median_cl_spacing_m": 20.270418233186014,
-    "median_response_spacing_m": 126.19715826746497,
+    "median_visible_spacing_m": 6.175170308369243,
+    "median_core_spacing_m": 41.870842416664104,
+    "median_cl_spacing_m": 39.905652536018735,
+    "median_response_spacing_m": 112.51692302245365,
     "median_linear_spacing_m": 45.07675010572585,
     "component_skill": {
       "Visible": {
         "dataset": "wiggle",
-        "rmse": 123.31912071526013,
-        "bias": -61.82916788233251,
-        "capture_rate": 0.7941176470588235,
-        "median_ratio": 1.2268596015308373
+        "rmse": 190.7754674833426,
+        "bias": -157.90790512115217,
+        "capture_rate": 0.0,
+        "median_ratio": 19.407701164882468
+      },
+      "Core": {
+        "dataset": "wiggle",
+        "rmse": 162.17570374119896,
+        "bias": -122.60838934152865,
+        "capture_rate": 0.14705882352941177,
+        "median_ratio": 3.131921770269353
       },
       "CL": {
         "dataset": "wiggle",
-        "rmse": 179.07821548581504,
-        "bias": -143.8527477509639,
-        "capture_rate": 0.029411764705882353,
-        "median_ratio": 6.146406393013006
+        "rmse": 164.0930982239284,
+        "bias": -125.41889237332695,
+        "capture_rate": 0.14705882352941177,
+        "median_ratio": 3.5296573385915115
       },
       "Response": {
         "dataset": "wiggle",
-        "rmse": 113.13095036287999,
-        "bias": -38.65841691738732,
-        "capture_rate": 0.7647058823529411,
-        "median_ratio": 0.9975264334631883
+        "rmse": 118.53043345028914,
+        "bias": -52.3528692886148,
+        "capture_rate": 0.7352941176470589,
+        "median_ratio": 1.1187677026210092
       },
       "Linear": {
         "dataset": "wiggle",

@@ -74,21 +74,33 @@ def _response_energy_proxy(
     lagrangian_shear = np.asarray(hydro.lagrangian_shear, dtype=float)
     stokes_gradient = np.asarray(hydro.stokes_gradient, dtype=float)
     nu_profile = np.asarray(hydro.nu_T_profile, dtype=float)
+    cl_drive = max(float(hydro.cl_drive_integral), 1.0e-12)
+    forcing_depth_fraction = float(np.clip(hydro.forcing_depth_fraction, 0.0, 1.0))
+    shear_to_drift_ratio = max(float(hydro.shear_to_drift_ratio), 1.0e-12)
+    cancellation_index = max(float(hydro.cancellation_index), 0.0)
 
     lagrangian_curvature = np.gradient(lagrangian_shear, z)
     shear_rms = math.sqrt(max(_integrate_profile(weight * lagrangian_shear ** 2, z), 1.0e-12))
     stokes_rms = math.sqrt(max(_integrate_profile(weight * stokes_gradient ** 2, z), 1.0e-12))
     curvature_rms = math.sqrt(max(_integrate_profile(weight * lagrangian_curvature ** 2, z), 1.0e-12))
     nu_surface = max(_integrate_profile(weight * nu_profile, z), 1.0e-12)
+    drive_gain = 1.0 + 0.30 * math.tanh(math.log1p(cl_drive))
+    cancellation_gain = 0.70 + 0.30 * min(cancellation_index, 1.5)
+    drift_bias = 1.0 / (1.0 + 0.35 * max(shear_to_drift_ratio - 1.0, 0.0))
 
-    roll_strength = (1.15 * stokes_rms + 0.35 * shear_rms) * math.sqrt(1.0 + 0.49 / max(params.La_SL ** 2, 1.0e-12))
-    vortex_strength = 0.85 * shear_rms + 0.45 * stokes_rms + 0.25 * curvature_rms
+    roll_strength = (
+        (1.15 * stokes_rms + 0.35 * shear_rms)
+        * math.sqrt(1.0 + 0.49 / max(params.La_SL ** 2, 1.0e-12))
+        * drive_gain
+        * cancellation_gain
+    )
+    vortex_strength = (0.85 * shear_rms + 0.45 * stokes_rms + 0.25 * curvature_rms) * drive_gain * drift_bias
     roll_strength /= max(nu_surface, 1.0e-12)
     vortex_strength /= max(nu_surface, 1.0e-12)
 
-    beta_roll = float(np.clip(0.70 + 0.45 * params.La_t, 0.55, 1.25))
-    beta_vortex = float(np.clip(1.55 + 0.65 * params.La_t, 1.35, 2.65))
-    surface_peak = float(np.clip(0.95 + 0.45 * params.La_t, 0.85, 2.40))
+    beta_roll = float(np.clip((0.70 + 0.45 * params.La_t) * (0.95 + 0.30 * forcing_depth_fraction), 0.55, 1.50))
+    beta_vortex = float(np.clip((1.55 + 0.65 * params.La_t) * (0.90 + 0.30 * forcing_depth_fraction), 1.10, 2.80))
+    surface_peak = float(np.clip((0.95 + 0.45 * params.La_t) * (1.25 - 0.45 * forcing_depth_fraction), 0.80, 2.80))
     surface_sigma = 0.42
 
     kz = np.asarray(l_values, dtype=float)
@@ -182,14 +194,21 @@ def build_hybrid_spacing_spectrum(
     supercriticality = max((params.Ra - nl_result.RcNL) / max(nl_result.RcNL, 1.0e-12), 0.0)
     supercritical_drive = supercriticality / (0.45 + supercriticality)
     persistent_drive = 1.0 - math.exp(-coherent_run_hours / 6.0)
+    hydro = params.hydrodynamic_state
+    cancellation_gain = float(np.clip(max(hydro.cancellation_index, 0.0), 0.0, 1.5) / 1.5)
+    forcing_depth_gain = float(np.clip(hydro.forcing_depth_fraction, 0.0, 1.0))
+    cl_drive_gain = float(np.clip(math.tanh(math.log1p(max(hydro.cl_drive_integral, 0.0))), 0.0, 1.0))
     response_mix = min(
         max(
-            0.12
-            + 0.32 * float(np.clip(coherence, 0.0, 1.0))
-            + 0.18 * float(np.clip(setup_index, 0.0, 1.0))
-            + 0.18 * float(np.clip(development_index, 0.0, 1.0))
-            + 0.12 * supercritical_drive
-            + 0.08 * persistent_drive,
+            0.06
+            + 0.24 * float(np.clip(coherence, 0.0, 1.0))
+            + 0.14 * float(np.clip(setup_index, 0.0, 1.0))
+            + 0.12 * float(np.clip(development_index, 0.0, 1.0))
+            + 0.14 * supercritical_drive
+            + 0.12 * persistent_drive
+            + 0.10 * cancellation_gain
+            + 0.04 * forcing_depth_gain
+            + 0.04 * cl_drive_gain,
             0.0,
         ),
         0.95,

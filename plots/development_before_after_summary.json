@@ -2,47 +2,47 @@
   "manual": {
     "n_observations": 39,
     "regression": {
-      "slope": 0.0857604499531387,
-      "intercept": 0.3408660754527823,
-      "r2": 0.007102206162537206,
-      "r": 0.08427458788114876
+      "slope": 0.2124295867500256,
+      "intercept": 0.17077833960761737,
+      "r2": 0.0437148890337562,
+      "r": 0.20908105852457404
     },
     "tests": {
-      "hourly_before_mean": 0.3344490219749575,
-      "hourly_after_mean": 0.335823718665095,
-      "obs_before_q90_mean": 0.3709815868605663,
-      "obs_after_q90_mean": 0.3726816232662741,
-      "ks_statistic": 0.028268358625501484,
-      "ks_pvalue": 0.42565961548671677,
-      "mannwhitney_u": 1756318.0,
-      "mannwhitney_pvalue": 0.33504806933152087,
-      "wilcoxon_statistic": 371.0,
-      "wilcoxon_pvalue": 0.7985112731585104,
-      "paired_t_statistic": -0.26183280968416556,
-      "paired_t_pvalue": 0.7948644434502871
+      "hourly_before_mean": 0.11326572801034648,
+      "hourly_after_mean": 0.11667599055059787,
+      "obs_before_q90_mean": 0.222857683238146,
+      "obs_after_q90_mean": 0.2181199051619649,
+      "ks_statistic": 0.03739316239316239,
+      "ks_pvalue": 0.13721824914025083,
+      "mannwhitney_u": 1724581.0,
+      "mannwhitney_pvalue": 0.056272226242539455,
+      "wilcoxon_statistic": 381.0,
+      "wilcoxon_pvalue": 0.9066497695166618,
+      "paired_t_statistic": 0.17315406162561106,
+      "paired_t_pvalue": 0.8634493856237444
     }
   },
   "wiggle": {
     "n_observations": 34,
     "regression": {
-      "slope": 0.08154456572449344,
-      "intercept": 0.33859466835629676,
-      "r2": 0.004865812821598925,
-      "r": 0.06975537844208629
+      "slope": 0.22400669485022168,
+      "intercept": 0.16651998673831056,
+      "r2": 0.03944308184051981,
+      "r": 0.19860282435181992
     },
     "tests": {
-      "hourly_before_mean": 0.3178587201643884,
-      "hourly_after_mean": 0.33386329300735423,
-      "obs_before_q90_mean": 0.3472730398475143,
-      "obs_after_q90_mean": 0.366912897578487,
-      "ks_statistic": 0.22137605042016806,
-      "ks_pvalue": 6.872683693506935e-36,
-      "mannwhitney_u": 1022769.0,
-      "mannwhitney_pvalue": 7.53955077518441e-35,
-      "wilcoxon_statistic": 151.0,
-      "wilcoxon_pvalue": 0.011234543286263943,
-      "paired_t_statistic": -2.969096291982121,
-      "paired_t_pvalue": 0.005528349575001665
+      "hourly_before_mean": 0.06604064914340227,
+      "hourly_after_mean": 0.10932373437612518,
+      "obs_before_q90_mean": 0.12918042672693414,
+      "obs_after_q90_mean": 0.19545726716875234,
+      "ks_statistic": 0.23205532212885155,
+      "ks_pvalue": 2.0185126895040597e-39,
+      "mannwhitney_u": 1066874.0,
+      "mannwhitney_pvalue": 1.0003448802917203e-26,
+      "wilcoxon_statistic": 161.0,
+      "wilcoxon_pvalue": 0.018677421496249735,
+      "paired_t_statistic": -2.376754404107964,
+      "paired_t_pvalue": 0.023420440024893116
     }
   }
 }

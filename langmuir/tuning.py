@@ -126,6 +126,14 @@ def sample_dynamics_config(rng: np.random.Generator) -> LangmuirDynamicsConfig:
         merge_supercriticality_threshold=float(rng.uniform(0.05, 0.6)),
         merge_step_factor=float(rng.uniform(0.72, 0.96)),
         coherence_threshold=float(rng.uniform(0.35, 0.9)),
+        fast_memory_hours=float(rng.uniform(0.10, 0.50)),
+        slow_memory_hours=float(rng.uniform(0.75, 3.00)),
+        direction_memory_hours=float(rng.uniform(0.40, 2.00)),
+        decay_memory_hours=float(rng.uniform(0.30, 1.50)),
+        spacing_growth_hours=float(rng.uniform(0.20, 1.25)),
+        spacing_decay_hours=float(rng.uniform(0.75, 4.00)),
+        visibility_on_hours=float(rng.uniform(0.10, 0.60)),
+        visibility_off_hours=float(rng.uniform(0.40, 2.50)),
     )
 
 
